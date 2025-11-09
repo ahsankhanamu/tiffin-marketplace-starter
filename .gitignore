@@ -1,0 +1,11 @@
+
+node_modules
+.env
+packages/*/node_modules
+packages/backend/.prisma
+packages/frontend/.svelte-kit
+packages/frontend/build
+dist
+.migrations
+*.log
+.DS_Store

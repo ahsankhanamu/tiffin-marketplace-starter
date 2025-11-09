@@ -1,0 +1,268 @@
+---
+alwaysApply: false
+---
+# Build a Tiffin Marketplace App
+
+## Core Objective
+
+Build a **Tiffin Marketplace Web Application** with three roles: **User (Customer)**, **Owner (Tiffin-House)**, and **Admin**.  
+The app should allow users to **discover nearby tiffin houses**, view meal plans, place orders or subscriptions, make payments, and track deliveries. Owners can manage menus, accept/decline orders, update order status, and manage delivery zones. Admins can manage users, owners, houses, categories, and monitor system activity.
+
+**Key Goals:**
+
+-   Geospatial discovery of tiffin houses near the user.
+    
+-   Realtime order tracking and notifications.
+    
+-   Scalable, maintainable, and well-structured code.
+    
+-   Interactive API documentation (Swagger/OpenAPI) for testing.
+    
+
+* * *
+
+## Tech Stack
+
+### Backend
+
+-   **Node.js** + **Fastify** (high-performance framework)
+    
+-   **PostgreSQL** + **PostGIS** (for geospatial queries)
+    
+-   **Prisma** ORM (type-safe database schema)
+    
+-   **fastify-swagger** (Swagger/OpenAPI)
+    
+-   **fastify-jwt** (JWT authentication)
+    
+-   **fastify-socket** (realtime order updates)
+    
+-   **dotenv** (environment variable management)
+    
+-   **bcrypt** (password hashing)
+    
+
+### Frontend
+
+-   **Svelte 5** + **SvelteKit**
+    
+-   **Tailwind CSS v4** for styling
+    
+-   **shadcn-svelte** for UI components
+    
+-   **`cn` utility** for class management and consistent design
+    
+-   **Socket.IO client** for realtime updates
+    
+
+### Dev & Deployment
+
+-   **Docker** + `docker-compose` for PostgreSQL + PostGIS
+    
+-   **Nodemon** for backend hot reload
+    
+-   **Prisma Migrations** for database schema
+    
+-   ESLint, Prettier for consistent code style
+    
+
+* * *
+
+## Directory Structure
+
+pgsql
+
+Copy code
+
+`tiffin-marketplace/ ├─ backend/ │  ├─ package.json │  ├─ .env.example │  ├─ prisma/ │  │  ├─ schema.prisma │  │  └─ migrations/ │  ├─ src/ │  │  ├─ index.js               # Fastify server entry point │  │  ├─ db.js                  # Prisma/Postgres setup │  │  ├─ routes/ │  │  │  ├─ auth.js │  │  │  ├─ houses.js │  │  │  └─ orders.js │  │  └─ seed.js                # Sample data seed │  └─ README.md ├─ frontend/ │  ├─ package.json │  ├─ svelte.config.js │  ├─ tailwind.config.cjs │  ├─ src/ │  │  ├─ app.html │  │  ├─ lib/ │  │  │  ├─ api.js              # Fetch helpers │  │  │  ├─ cn.js               # Classname utility │  │  │  └─ ui/                 # shadcn-svelte components │  │  └─ routes/ │  │     ├─ +page.svelte        # User map view / nearby tiffin houses │  │     ├─ login/+page.svelte │  │     ├─ owner/               # Owner app pages │  │     ├─ admin/               # Admin app pages │  │     └─ profile/+page.svelte ├─ docker-compose.yml            # PostgreSQL + PostGIS ├─ .gitignore └─ README.md`
+
+* * *
+
+## Backend Requirements
+
+### Models
+
+**User**
+
+ts
+
+Copy code
+
+`{   id: string   email: string   passwordHash: string   name: string   role: 'user' | 'owner' | 'admin'   createdAt: Date }`
+
+**House**
+
+ts
+
+Copy code
+
+`{   id: string   ownerId: string   title: string   description?: string   location: Point (PostGIS geometry)   createdAt: Date }`
+
+**MealPlan**
+
+ts
+
+Copy code
+
+`{   id: string   houseId: string   name: string   price: number   billingCycle: 'daily'|'weekly'|'monthly'|'one-off'   availableDays: string[]   startTime: string   endTime: string   items: [{ name: string, qty: string }] }`
+
+**Order**
+
+ts
+
+Copy code
+
+`{   id: string   userId: string   houseId: string   planId: string   status: 'created'|'preparing'|'out-for-delivery'|'delivered'   amount: number   createdAt: Date }`
+
+* * *
+
+### API Endpoints (Swagger/OpenAPI)
+
+**Auth**
+
+-   `POST /api/auth/register` — register user/owner/admin
+    
+-   `POST /api/auth/login` — JWT token
+    
+
+**Houses**
+
+-   `GET /api/houses/nearby?lng=&lat=&radius=` — nearby search
+    
+-   `GET /api/houses/:id` — get full house details
+    
+-   `POST /api/houses` — create house (owner)
+    
+
+**Meal Plans**
+
+-   `POST /api/houses/:id/plans` — create plan (owner)
+    
+-   `GET /api/houses/:id/plans` — list plans
+    
+
+**Orders**
+
+-   `POST /api/orders` — place order
+    
+-   `GET /api/orders/:id` — order details
+    
+-   `PATCH /api/orders/:id/status` — update status (owner)
+    
+-   Realtime notifications via Socket.IO
+    
+
+**Admin**
+
+-   CRUD for users, owners, houses
+    
+-   System monitoring endpoints
+    
+
+**Swagger UI**
+
+-   Auto-generated at `/api/docs`
+    
+-   Full request/response schemas
+    
+
+* * *
+
+## Frontend Requirements
+
+**User App**
+
+-   Discover nearby tiffin houses using geolocation.
+    
+-   Browse meal plans, place orders.
+    
+-   Track orders in realtime.
+    
+
+**Owner App**
+
+-   Manage houses, meal plans, availability.
+    
+-   Accept/decline orders, update status.
+    
+-   Track upcoming deliveries/subscriptions.
+    
+
+**Admin App**
+
+-   Manage users, owners, houses, meal plans.
+    
+-   Monitor system activity and analytics.
+    
+
+**UI/UX**
+
+-   Tailwind 4 + shadcn-svelte components.
+    
+-   `cn` utility for consistent styling.
+    
+-   Responsive layout and modern typography.
+    
+-   Color, interaction, and spacing consistency across components.
+    
+
+* * *
+
+## Best Practices
+
+1.  **Backend**
+    
+    -   Use JWT auth with role-based access.
+        
+    -   Validate inputs with schemas (Zod/Joi).
+        
+    -   Use transactions for order/payment operations.
+        
+    -   Use PostGIS for accurate geospatial queries (`ST_DWithin`, `ST_Distance`).
+        
+    -   Implement seed script for sample data.
+        
+2.  **Frontend**
+    
+    -   Use stores for state management (`svelte/store`).
+        
+    -   Use `cn` utility for conditional and composable classes.
+        
+    -   Modular component architecture (`ui/`, `layout/`, `forms/`).
+        
+    -   Realtime updates via Socket.IO client.
+        
+3.  **Dev & Deployment**
+    
+    -   Docker-compose for local dev.
+        
+    -   ESLint + Prettier.
+        
+    -   Environment variables via `.env`.
+        
+    -   Migrations via Prisma.
+        
+    -   Separate env for development/production.
+        
+
+* * *
+
+## Additional Notes
+
+-   The **core agenda** is a location-based marketplace for tiffin houses with **real-time order tracking**, subscriptions, payments, and admin monitoring.
+    
+-   Ensure geospatial queries are accurate and fast for radius/nearest searches.
+    
+-   All endpoints must be testable via Swagger/OpenAPI.
+    
+-   Use **Postgres + PostGIS** for accuracy and maintainability over MongoDB.
+    
+-   Use **Fastify** for high performance and schema-based validation.
+    
+-   Frontend should be reactive, responsive, and modular using Svelte 5 and shadcn-svelte components.
+    
+
+* * *
+
+This prompt gives Cursor **all the context, structure, stack decisions, and best practices** to generate the full project: backend + frontend + real-time + Swagger-ready API.
+
