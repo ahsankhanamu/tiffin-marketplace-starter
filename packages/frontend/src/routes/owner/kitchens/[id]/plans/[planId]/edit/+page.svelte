@@ -9,7 +9,11 @@
   import Label from '$lib/ui/Label.svelte';
   import Badge from '$lib/ui/Badge.svelte';
   import { cn } from '$lib/cn';
-  import { Plus, X, Upload, Trash2 } from '$lib/icons';
+  import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
+  import ImagePicker from '$lib/ui/ImagePicker.svelte';
+  import { Plus, X, Upload, Trash2, ChevronDown } from '$lib/icons';
+  import { apiBase } from '$lib/api/api';
+  import type { Image } from '$lib/api';
 
   let kitchen = $state<Kitchen | null>(null);
   let mealPlan = $state<MealPlan | null>(null);
@@ -22,6 +26,16 @@
   let description = $state('');
   let price = $state('0');
   let billingCycle = $state<'daily' | 'weekly' | 'monthly' | 'one-off'>('one-off');
+  let billingCycleOpen = $state(false);
+  
+  const billingCycleOptions = [
+    { value: 'one-off', label: 'One-off' },
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' }
+  ];
+  
+  let selectedBillingCycle = $derived(billingCycleOptions.find(o => o.value === billingCycle) || billingCycleOptions[0]);
 
   // Meal types (breakfast, lunch, dinner)
   let selectedMealTypes = $state<Set<'breakfast' | 'lunch' | 'dinner'>>(new Set(['lunch', 'dinner']));
@@ -171,15 +185,24 @@
     }
   }
 
-  async function handleImageUpload(dayOfWeek: number, mealType: string, itemIndex: number, file: File): Promise<void> {
-    // TODO: Implement image upload API
-    // For now, create a data URL
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageUrl = e.target?.result as string;
-      updateMenuItem(dayOfWeek, mealType, itemIndex, { image: imageUrl });
-    };
-    reader.readAsDataURL(file);
+  let imagePickerOpen = $state(false);
+  let imagePickerContext = $state<{ dayOfWeek: number; mealType: string; itemIndex: number } | null>(null);
+
+  function openImagePicker(dayOfWeek: number, mealType: string, itemIndex: number): void {
+    imagePickerContext = { dayOfWeek, mealType, itemIndex };
+    imagePickerOpen = true;
+  }
+
+  function handleImageSelect(image: Image): void {
+    if (!imagePickerContext) return;
+    const { dayOfWeek, mealType, itemIndex } = imagePickerContext;
+    // Store image ID and URL
+    updateMenuItem(dayOfWeek, mealType, itemIndex, { 
+      image: image.id, 
+      imageUrl: `${apiBase}${image.url}` 
+    });
+    imagePickerOpen = false;
+    imagePickerContext = null;
   }
 
   async function handleSave(): Promise<void> {
@@ -294,8 +317,16 @@
 
           // Load menu items
           const key = getScheduleKey(day, mealType);
-          if (schedule.menuItems && Array.isArray(schedule.menuItems)) {
-            menuItems[key] = schedule.menuItems as MenuItem[];
+          if (schedule.menuItems !== null && schedule.menuItems !== undefined) {
+            if (Array.isArray(schedule.menuItems)) {
+              menuItems[key] = schedule.menuItems as MenuItem[];
+            } else {
+              // If it's not an array, initialize as empty
+              menuItems[key] = [];
+            }
+          } else {
+            // If menuItems is null/undefined, initialize as empty array
+            menuItems[key] = [];
           }
         });
       }
@@ -346,7 +377,7 @@
       {/if}
 
       <!-- Basic Info -->
-      <Card className={cn('p-6')}>
+      <Card class={cn('p-6')}>
         <h2 class={cn('text-xl font-semibold mb-4')}>Basic Information</h2>
         <div class={cn('grid gap-4 md:grid-cols-2')}>
           <div>
@@ -359,12 +390,34 @@
           </div>
           <div>
             <Label for="billing">Billing Cycle</Label>
-            <select id="billing" bind:value={billingCycle} class={cn('flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1')}>
-              <option value="one-off">One-off</option>
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
+            <DropdownMenu.DropdownMenu bind:open={billingCycleOpen}>
+              <DropdownMenu.DropdownMenuTrigger
+                class={cn(
+                  'w-full h-10 flex items-center justify-between px-3 py-2 text-sm',
+                  'rounded-md border border-input bg-background',
+                  'hover:bg-accent/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
+                  'transition-colors mt-1'
+                )}
+              >
+                <span>{selectedBillingCycle.label}</span>
+                <ChevronDown class={cn('w-4 h-4 text-muted-foreground transition-transform duration-200', billingCycleOpen && 'rotate-180')} />
+              </DropdownMenu.DropdownMenuTrigger>
+              <DropdownMenu.DropdownMenuContent align="end" class={cn('w-(--radix-dropdown-menu-trigger-width)')}>
+                {#each billingCycleOptions as option}
+                  <DropdownMenu.DropdownMenuItem
+                    onclick={() => {
+                      billingCycle = option.value as 'daily' | 'weekly' | 'monthly' | 'one-off';
+                      billingCycleOpen = false;
+                    }}
+                    class={cn(
+                      billingCycle === option.value && 'bg-accent font-medium'
+                    )}
+                  >
+                    {option.label}
+                  </DropdownMenu.DropdownMenuItem>
+                {/each}
+              </DropdownMenu.DropdownMenuContent>
+            </DropdownMenu.DropdownMenu>
           </div>
         </div>
         <div class={cn('mt-4')}>
@@ -379,7 +432,7 @@
       </Card>
 
       <!-- Meal Type and Days Selection -->
-      <Card className={cn('p-6')}>
+      <Card class={cn('p-6')}>
         <div class={cn('flex items-start justify-between gap-6 flex-wrap')}>
           <div class={cn('flex-1 min-w-[200px]')}>
             <h2 class={cn('text-xl font-semibold mb-4')}>Meal Types</h2>
@@ -431,7 +484,7 @@
       </Card>
 
       <!-- Weekly Schedule -->
-      <Card className={cn('p-6')}>
+      <Card class={cn('p-6')}>
         <h2 class={cn('text-xl font-semibold mb-4')}>Weekly Schedule & Menu</h2>
         <p class={cn('text-sm text-muted-foreground mb-6')}>Set availability and menu for each day</p>
         
@@ -538,22 +591,26 @@
                                       onchange={(e) => updateMenuItem(day.value, mealType, index, { description: e.currentTarget.value })}
                                       class={cn('h-12 text-xs w-full rounded border border-input bg-background px-2 py-1')}
                                     />
-                                    {#if item.image}
-                                      <img src={item.image} alt={item.name} class={cn('w-full h-20 object-cover rounded')} />
+                                    {#if item.imageUrl}
+                                      <div class={cn('relative')}>
+                                        <img src={item.imageUrl} alt={item.name} class={cn('w-full h-20 object-cover rounded')} />
+                                        <button
+                                          type="button"
+                                          onclick={() => openImagePicker(day.value, mealType, index)}
+                                          class={cn('absolute top-1 right-1 p-1 rounded bg-background/80 hover:bg-background transition-colors')}
+                                        >
+                                          <Upload class={cn('size-3')} />
+                                        </button>
+                                      </div>
                                     {:else}
-                                      <label class={cn('flex items-center gap-1 text-xs text-muted-foreground cursor-pointer')}>
+                                      <button
+                                        type="button"
+                                        onclick={() => openImagePicker(day.value, mealType, index)}
+                                        class={cn('flex items-center gap-1 text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors')}
+                                      >
                                         <Upload class={cn('size-3')} />
                                         <span>Upload Image</span>
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          class={cn('hidden')}
-                                          onchange={(e) => {
-                                            const file = e.currentTarget.files?.[0];
-                                            if (file) handleImageUpload(day.value, mealType, index, file);
-                                          }}
-                                        />
-                                      </label>
+                                      </button>
                                     {/if}
                                   </div>
                                 {/each}
@@ -591,4 +648,7 @@
     </div>
   {/if}
 </div>
+
+<!-- Image Picker Modal -->
+<ImagePicker bind:open={imagePickerOpen} onSelect={handleImageSelect} />
 

@@ -77,7 +77,7 @@
   {#if loading}
     <p>Loading...</p>
   {:else if kitchens.length === 0}
-    <Card className={cn('p-8 text-center')}>
+    <Card class={cn('p-8 text-center')}>
       <Building class={cn('w-12 h-12 mx-auto mb-4 text-muted-foreground')} />
       <p class={cn('text-muted-foreground mb-2')}>No kitchens yet</p>
       <p class={cn('text-sm text-muted-foreground mb-4')}>Create your first kitchen to start offering meal plans</p>
@@ -89,7 +89,7 @@
   {:else}
     <div class={cn('grid gap-4 md:grid-cols-2 lg:grid-cols-3')}>
       {#each kitchens as kitchen}
-        <Card className={cn('p-6 hover:shadow-md transition-shadow')}>
+        <Card class={cn('p-6 hover:shadow-md transition-shadow')}>
           <h3 class={cn('text-xl font-semibold mb-2')}>{kitchen.title}</h3>
           {#if kitchen.description}
             <p class={cn('text-sm text-muted-foreground mb-4 line-clamp-2')}>{kitchen.description}</p>

@@ -16,15 +16,17 @@ datasource db {
  */
 
 model User {
-  id         String       @id @default(cuid())
-  email      String       @unique
-  name       String?
-  role       String       @default("user")
-  createdAt  DateTime     @default(now())
-  auth       Auth?
-  orders     Order[]
-  kitchens   Kitchen[]    @relation("KitchenOwner")
-  trialUsage TrialUsage[]
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  role         String        @default("user")
+  createdAt    DateTime      @default(now())
+  auth         Auth?
+  orders       Order[]
+  kitchens     Kitchen[]     @relation("KitchenOwner")
+  trialUsage   TrialUsage[]
+  subscriptions Subscription[]
+  images       Image[]
 }
 
 model Auth {
@@ -53,29 +55,30 @@ model Kitchen {
 }
 
 model MealPlan {
-  id                    String             @id @default(cuid())
-  kitchenId             String
-  kitchen               Kitchen            @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
-  name                  String
-  description           String?
-  price                 Float
-  billingCycle          String             @default("one-off")
-  planType              String             @default("subscription")
-  availableDays         String[]           @default([])
-  startTime             String?
-  endTime               String?
-  items                 String             @default("[]")
-  menuItems             Json?
-  trialEnabled          Boolean            @default(false)
-  trialLimit            Int?
-  trialPrice            Float?
-  trialValidity         String?
-  trialNewCustomersOnly Boolean            @default(false)
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  schedules             MealPlanSchedule[]
-  orders                Order[]
-  trialUsage            TrialUsage[]
+  id            String         @id @default(cuid())
+  kitchenId     String
+  kitchen       Kitchen        @relation(fields: [kitchenId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  price         Float
+  billingCycle  String         @default("one-off")
+  planType      String         @default("subscription")
+  availableDays String[]       @default([])
+  startTime     String?
+  endTime       String?
+  items         String         @default("[]")
+  menuItems     Json?
+  trialEnabled  Boolean        @default(false)
+  trialLimit    Int?
+  trialPrice    Float?
+  trialValidity String?
+  trialNewCustomersOnly Boolean @default(false)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  schedules     MealPlanSchedule[]
+  orders        Order[]
+  trialUsage    TrialUsage[]
+  subscriptions Subscription[]
 }
 
 model Order {
@@ -130,4 +133,36 @@ model TrialUsage {
   @@unique([userId, mealPlanId])
   @@index([userId])
   @@index([mealPlanId])
+}
+
+model Subscription {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mealPlanId  String
+  mealPlan    MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  mealType    String   // breakfast, lunch, or dinner
+  dayOfWeek   Int?     // Optional: specific day of week (0-6), null means all days
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, mealPlanId, mealType, dayOfWeek])
+  @@index([userId])
+  @@index([mealPlanId])
+}
+
+model Image {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  url       String
+  filename  String
+  mimeType  String
+  size      Int      // Size in bytes
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([createdAt])
 }

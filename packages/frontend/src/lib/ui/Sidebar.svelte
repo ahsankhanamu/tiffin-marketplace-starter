@@ -8,6 +8,7 @@
     saveSidebarState,
     retrieveSidebarState,
   } from "$lib/utils/persistence";
+  import { sidebarControls } from "$lib/stores/sidebar";
   import { cn } from "$lib/cn";
   import Button from "./Button.svelte";
   import Card from "./Card.svelte";
@@ -45,8 +46,7 @@
     }
   }
 
-  function onSidebarClick(e: Event): void {
-    e.stopPropagation();
+  function toggleSidebar(): void {
     const willBeOpen = !showSidebar;
     if (willBeOpen) {
       wasOpenedByClick = true;
@@ -59,6 +59,23 @@
     if (hoverTimeout) {
       clearTimeout(hoverTimeout);
       hoverTimeout = null;
+    }
+  }
+
+  function onSidebarClick(e: Event): void {
+    e.stopPropagation();
+    toggleSidebar();
+  }
+
+  function openSidebar(): void {
+    if (!showSidebar) {
+      toggleSidebar();
+    }
+  }
+
+  function closeSidebar(): void {
+    if (showSidebar) {
+      toggleSidebar();
     }
   }
 
@@ -108,6 +125,14 @@
     mobile = checkMobile();
     showSidebar = mobile ? false : retrieveSidebarState(true);
 
+    // Expose sidebar controls to the store
+    sidebarControls.set({
+      toggle: toggleSidebar,
+      open: openSidebar,
+      close: closeSidebar,
+      isMobile: () => mobile
+    });
+
     const handleResize = () => {
       updateMobile();
     };
@@ -127,6 +152,7 @@
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchend", onTouchEnd);
+      sidebarControls.set(null);
     };
   });
 
@@ -138,6 +164,14 @@
         "sidebar-collapsed",
         !showSidebar && !mobile
       );
+      
+      // Update sidebar controls when mobile state changes
+      sidebarControls.set({
+        toggle: toggleSidebar,
+        open: openSidebar,
+        close: closeSidebar,
+        isMobile: () => mobile
+      });
     }
   });
 
@@ -161,15 +195,16 @@
 <nav
   bind:this={navElement}
   class={cn(
-    "fixed left-0 top-0 bottom-0 z-50",
     "bg-card/80 backdrop-blur-md border-r border-border",
     "select-none shadow-lg",
     "transition-all duration-300 ease-in-out",
     "flex flex-col",
-    // Mobile styles
+    // Mobile styles - fixed overlay
+    mobile && "fixed left-0 top-0 bottom-0 z-50",
     mobile && showSidebar && "w-64",
     mobile && !showSidebar && "w-0 overflow-hidden",
-    // Desktop styles
+    // Desktop styles - relative but with fixed height, doesn't scroll with main
+    !mobile && "relative h-screen",
     !mobile && showSidebar && "w-64",
     !mobile && !showSidebar && "w-16"
   )}

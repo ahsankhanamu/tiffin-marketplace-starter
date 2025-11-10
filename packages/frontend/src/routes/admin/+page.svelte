@@ -78,7 +78,7 @@
   {:else if activeTab === 'users'}
     <div class={cn('grid gap-4')}>
       {#each users as user}
-        <Card className={cn('p-4')}>
+        <Card class={cn('p-4')}>
           <div class={cn('flex justify-between items-center')}>
             <div>
               <p class={cn('font-semibold')}>{user.name || 'No name'}</p>
@@ -92,7 +92,7 @@
   {:else if activeTab === 'kitchens'}
     <div class={cn('grid gap-4 md:grid-cols-2')}>
       {#each kitchens as kitchen}
-        <Card className={cn('p-4')}>
+        <Card class={cn('p-4')}>
           <h3 class={cn('font-semibold mb-2')}>{kitchen.title}</h3>
           {#if kitchen.description}
             <p class={cn('text-sm text-muted-foreground mb-2')}>{kitchen.description}</p>
@@ -106,7 +106,7 @@
   {:else if activeTab === 'orders'}
     <div class={cn('grid gap-4')}>
       {#each orders as order}
-        <Card className={cn('p-4')}>
+        <Card class={cn('p-4')}>
           <div class={cn('flex justify-between items-center')}>
             <div>
               <p class={cn('font-semibold')}>Order #{order.id.slice(0, 8)}</p>

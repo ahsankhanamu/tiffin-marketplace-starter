@@ -40,6 +40,42 @@ export default async function (server, opts) {
     const { lng, lat, radius = 5000 } = request.query;
     if (!lng || !lat) return reply.code(400).send({ error: 'lng and lat required' });
 
+    // If owner is authenticated, return only their kitchens
+    try {
+      // Try to verify JWT token (optional - won't fail if missing)
+      await request.jwtVerify();
+      
+      if (request.user && request.user.role === 'owner') {
+        const userId = request.user.id;
+        const ownerKitchens = await server.prisma.kitchen.findMany({
+          where: { ownerId: userId },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            ownerId: true,
+            location: true
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+
+        return ownerKitchens.map(kitchen => {
+          let location = kitchen.location;
+          if (typeof location === 'string' && location) {
+            try {
+              location = JSON.parse(location);
+            } catch {
+              location = null;
+            }
+          }
+          return { ...kitchen, location, distance_m: null };
+        });
+      }
+    } catch (authErr) {
+      // If auth check fails (no token or invalid token), continue with normal flow (public access)
+      // This is expected for non-authenticated users
+    }
+
     try {
       // Check if PostGIS is available and install if needed
       const availableCheck = await server.prisma.$queryRawUnsafe(`
@@ -76,7 +112,7 @@ export default async function (server, opts) {
       if (postgisInstalled) {
         // Use PostGIS query
         const sql = `
-          SELECT id, title, description, ST_AsGeoJSON(location)::json AS location,
+          SELECT id, title, description, "ownerId", ST_AsGeoJSON(location)::json AS location,
                  ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($1, $2),4326)::geography) AS distance_m
           FROM "Kitchen"
           WHERE location IS NOT NULL
@@ -94,6 +130,7 @@ export default async function (server, opts) {
             id, 
             title, 
             description,
+            "ownerId",
             location::json AS location,
             (
               6371000 * acos(
@@ -136,6 +173,7 @@ export default async function (server, opts) {
           id: true,
           title: true,
           description: true,
+          ownerId: true,
           location: true
         },
         take: 50

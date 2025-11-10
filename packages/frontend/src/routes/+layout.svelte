@@ -4,7 +4,9 @@
   import { page } from '$app/stores';
   import { theme } from '$lib/stores/theme';
   import { initAuth } from '$lib/stores/auth';
+  import { sidebarControls } from '$lib/stores/sidebar';
   import Sidebar from '$lib/ui/Sidebar.svelte';
+  import { Menu } from '$lib/icons';
   import { cn } from '$lib/cn';
   import '../app.css';
 
@@ -45,21 +47,65 @@
   }
 
   let pageTitle = $derived(getPageTitle());
+
+  let controls = $state<{ toggle: () => void } | null>(null);
+  let isMobile = $state(false);
+
+  $effect(() => {
+    const unsubscribe = sidebarControls.subscribe((value) => {
+      controls = value;
+    });
+    return unsubscribe;
+  });
+
+  function handleMenuClick(): void {
+    if (controls) {
+      controls.toggle();
+    }
+  }
+
+  if (browser) {
+    onMount(() => {
+      const checkMobile = () => {
+        isMobile = window.innerWidth < 768;
+      };
+      checkMobile();
+      window.addEventListener('resize', checkMobile);
+      return () => window.removeEventListener('resize', checkMobile);
+    });
+  }
 </script>
 
-<Sidebar />
-
-<div class="flex flex-col min-h-screen">
-  <!-- Top bar with page title -->
-  <header class="sticky top-0 z-30 w-full border-b border-border bg-card/80 backdrop-blur-md transition-all duration-300 ease-in-out">
-    <div class="container mx-auto px-4 h-14 flex items-center">
-      <h1 class={cn('text-lg font-semibold text-foreground')}>{pageTitle}</h1>
-    </div>
-  </header>
+<div class="flex h-screen overflow-hidden">
+  <Sidebar />
   
-  <!-- Main content with sidebar spacing -->
-  <main class="flex-1 transition-all duration-300 ease-in-out">
-    <slot />
-  </main>
+  <div class="flex flex-col flex-1 min-w-0 overflow-hidden">
+    <!-- Top bar with page title -->
+    <header class="sticky top-0 z-30 w-full border-b border-border bg-card/80 backdrop-blur-md transition-all duration-300 ease-in-out flex-shrink-0">
+      <div class="container mx-auto px-4 h-14 flex items-center gap-3">
+        {#if isMobile && controls}
+          <button
+            type="button"
+            onclick={handleMenuClick}
+            class={cn(
+              'flex items-center justify-center rounded-lg',
+              'size-10 p-2',
+              'hover:bg-accent/50 transition-colors',
+              'text-foreground'
+            )}
+            aria-label="Toggle sidebar"
+          >
+            <Menu class="size-5" />
+          </button>
+        {/if}
+        <h1 class={cn('text-lg font-semibold text-foreground')}>{pageTitle}</h1>
+      </div>
+    </header>
+    
+    <!-- Main content - scrollable independently -->
+    <main class="flex-1 overflow-y-auto transition-all duration-300 ease-in-out">
+      <slot />
+    </main>
+  </div>
 </div>
 

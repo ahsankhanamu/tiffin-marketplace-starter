@@ -6,21 +6,44 @@
   import Input from '$lib/ui/Input.svelte';
   import Label from '$lib/ui/Label.svelte';
   import Card from '$lib/ui/Card.svelte';
+  import MapPicker from '$lib/ui/MapPicker.svelte';
   import { cn } from '$lib/cn';
   
   let title = $state('');
   let description = $state('');
-  let lng = $state('');
-  let lat = $state('');
+  let lng = $state<number | null>(null);
+  let lat = $state<number | null>(null);
   let loading = $state(false);
   let error = $state('');
   
   let auth = $derived.by(() => $authStore);
   
+  function handleLocationSelect(selectedLat: number, selectedLng: number): void {
+    lat = selectedLat;
+    lng = selectedLng;
+  }
+  
+  function getCurrentLocation(): void {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          lat = pos.coords.latitude;
+          lng = pos.coords.longitude;
+        },
+        (err) => {
+          error = 'Failed to get your location. Please select it on the map.';
+          console.error('Geolocation error:', err);
+        }
+      );
+    } else {
+      error = 'Geolocation is not supported by your browser. Please select your location on the map.';
+    }
+  }
+  
   async function handleSubmit(): Promise<void> {
     error = '';
-    if (!title || !lng || !lat) {
-      error = 'Please fill all required fields';
+    if (!title || lng === null || lat === null) {
+      error = 'Please fill all required fields and select a location on the map';
       return;
     }
     loading = true;
@@ -28,8 +51,8 @@
       await createKitchen({
         title,
         description: description || undefined,
-        lng: parseFloat(lng),
-        lat: parseFloat(lat)
+        lng: lng,
+        lat: lat
       });
       goto('/owner');
     } catch (err: unknown) {
@@ -38,21 +61,12 @@
       loading = false;
     }
   }
-  
-  function getLocation(): void {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        lat = pos.coords.latitude.toString();
-        lng = pos.coords.longitude.toString();
-      });
-    }
-  }
 </script>
 
 <div class={cn('container mx-auto p-6 max-w-2xl')}>
   <h1 class={cn('text-3xl font-bold mb-6')}>Create New Kitchen</h1>
   
-  <Card className={cn('p-6')}>
+  <Card class={cn('p-6')}>
     {#if error}
       <div class={cn('mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm')}>
         {error}
@@ -81,36 +95,25 @@
         />
       </div>
       
-      <div class={cn('grid grid-cols-2 gap-4')}>
-        <div>
-          <Label for="lat">Latitude *</Label>
-          <Input
-            id="lat"
-            type="number"
-            step="any"
-            bind:value={lat}
-            placeholder="24.4539"
-            required
-            class={cn('mt-1')}
-          />
+      <div>
+        <div class={cn('flex items-center justify-between mb-2')}>
+          <Label>Kitchen Location *</Label>
+          <Button type="button" variant="outline" size="sm" onclick={getCurrentLocation}>
+            Use Current Location
+          </Button>
         </div>
-        <div>
-          <Label for="lng">Longitude *</Label>
-          <Input
-            id="lng"
-            type="number"
-            step="any"
-            bind:value={lng}
-            placeholder="54.3773"
-            required
-            class={cn('mt-1')}
-          />
-        </div>
+        <MapPicker
+          lat={lat}
+          lng={lng}
+          onLocationSelect={handleLocationSelect}
+          height="400px"
+        />
+        {#if lat !== null && lng !== null}
+          <div class={cn('mt-2 text-xs text-muted-foreground')}>
+            Selected: {lat.toFixed(6)}, {lng.toFixed(6)}
+          </div>
+        {/if}
       </div>
-      
-      <Button type="button" variant="outline" onclick={getLocation} class={cn('w-full')}>
-        Use Current Location
-      </Button>
       
       <Button type="submit" disabled={loading} class={cn('w-full')}>
         {loading ? 'Creating...' : 'Create Kitchen'}

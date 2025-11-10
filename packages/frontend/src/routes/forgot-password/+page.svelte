@@ -85,7 +85,7 @@
 </script>
 
 <div class={cn('flex min-h-screen items-center justify-center p-4')}>
-  <Card className={cn('w-full max-w-md p-6')}>
+  <Card class={cn('w-full max-w-md p-6')}>
     <h1 class={cn('text-2xl font-bold mb-6')}>Forgot Password</h1>
     
     {#if error}

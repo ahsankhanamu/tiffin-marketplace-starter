@@ -418,7 +418,7 @@ export default async function (server, opts) {
         type: 'object',
         required: ['status'],
         properties: {
-          status: { type: 'string', enum: ['created', 'preparing', 'out-for-delivery', 'delivered'] }
+          status: { type: 'string', enum: ['created', 'preparing', 'out-for-delivery', 'delivered', 'cancelled'] }
         }
       },
       response: {
@@ -429,7 +429,7 @@ export default async function (server, opts) {
             userId: { type: 'string' },
             kitchenId: { type: 'string' },
             planId: { type: 'string' },
-            status: { type: 'string', enum: ['created', 'preparing', 'out-for-delivery', 'delivered'] },
+            status: { type: 'string', enum: ['created', 'preparing', 'out-for-delivery', 'delivered', 'cancelled'] },
             amount: { type: 'number' },
             createdAt: { type: 'string', format: 'date-time' }
           }

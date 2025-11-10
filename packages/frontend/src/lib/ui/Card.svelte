@@ -6,15 +6,18 @@
     variant?: 'default' | 'glass' | 'glass-strong' | 'glass-subtle';
   }
   
-  let { class: className = '', variant = 'glass' }: Props = $props();
+  let { class: className = '', variant = 'default' }: Props = $props();
 </script>
 
 <div class={cn(
-  variant === 'glass' && 'glass',
-  variant === 'glass-strong' && 'glass-strong',
-  variant === 'glass-subtle' && 'glass-subtle',
-  variant === 'default' && 'rounded-lg border border-border bg-card text-card-foreground shadow-sm',
-  'p-6 transition-glass',
+  // Default variant - solid card with proper styling
+  variant === 'default' && 'rounded-lg border border-border bg-card text-card-foreground shadow-md',
+  // Glass variants - apply glass theme classes
+  variant === 'glass' && 'glass transition-glass',
+  variant === 'glass-strong' && 'glass-strong transition-glass',
+  variant === 'glass-subtle' && 'glass-subtle transition-glass',
+  // Default padding - applied unless overridden by className
+  'p-6',
   className
 )}>
   <slot />

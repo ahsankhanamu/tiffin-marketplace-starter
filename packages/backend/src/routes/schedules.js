@@ -27,7 +27,7 @@ export default async function (server, opts) {
               deliveryStart: { type: 'string' },
               deliveryEnd: { type: 'string' },
               maxOrders: { type: 'number' },
-              menuItems: { type: 'object' }
+              menuItems: { type: 'array' }
             }
           }
         },
@@ -80,14 +80,19 @@ export default async function (server, opts) {
                 dayOfWeek: { type: 'number', minimum: 0, maximum: 6 },
                 mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner'] },
                 isAvailable: { type: 'boolean' },
-                price: { type: 'number', minimum: 0 },
-                startTime: { type: 'string' },
-                endTime: { type: 'string' },
+                price: { type: ['number', 'null'] },
+                startTime: { type: ['string', 'null'] },
+                endTime: { type: ['string', 'null'] },
                 orderDeadline: { type: 'string' },
-                deliveryStart: { type: 'string' },
-                deliveryEnd: { type: 'string' },
-                maxOrders: { type: 'number', minimum: 1 },
-                menuItems: { type: 'object' }
+                deliveryStart: { type: ['string', 'null'] },
+                deliveryEnd: { type: ['string', 'null'] },
+                maxOrders: { 
+                  type: ['number', 'null']
+                },
+                menuItems: { 
+                  type: ['array', 'null'],
+                  items: { type: 'object' }
+                }
               }
             }
           }
@@ -119,7 +124,19 @@ export default async function (server, opts) {
   }, async (request, reply) => {
     try {
       const { planId } = request.params;
-      const { schedules } = request.body;
+      let { schedules } = request.body;
+      
+      // Clean up maxOrders before validation - convert 0, undefined, or invalid values to null
+      schedules = schedules.map(schedule => {
+        if (schedule.maxOrders !== undefined && schedule.maxOrders !== null) {
+          if (typeof schedule.maxOrders === 'number' && schedule.maxOrders < 1) {
+            schedule.maxOrders = null;
+          }
+        } else {
+          schedule.maxOrders = null;
+        }
+        return schedule;
+      });
 
       const mealPlan = await server.prisma.mealPlan.findUnique({
         where: { id: planId },
@@ -142,6 +159,10 @@ export default async function (server, opts) {
         if (!schedule.orderDeadline || !/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(schedule.orderDeadline)) {
           return reply.code(400).send({ error: 'orderDeadline must be in HH:MM format (24-hour)' });
         }
+        // Validate maxOrders if provided
+        if (schedule.maxOrders !== undefined && schedule.maxOrders !== null && schedule.maxOrders < 1) {
+          return reply.code(400).send({ error: 'maxOrders must be >= 1 if provided' });
+        }
       }
 
       await server.prisma.mealPlanSchedule.deleteMany({
@@ -149,8 +170,53 @@ export default async function (server, opts) {
       });
 
       const createdSchedules = await Promise.all(
-        schedules.map(schedule =>
-          server.prisma.mealPlanSchedule.create({
+        schedules.map(schedule => {
+          // Clean up maxOrders - if it's 0, undefined, or invalid, set to null
+          let maxOrders = null;
+          if (schedule.maxOrders !== undefined && schedule.maxOrders !== null && schedule.maxOrders >= 1) {
+            maxOrders = schedule.maxOrders;
+          }
+          
+          // Ensure menuItems is ALWAYS stored as an array (never as object)
+          let menuItemsToStore = [];
+          if (schedule.menuItems !== null && schedule.menuItems !== undefined) {
+            if (Array.isArray(schedule.menuItems)) {
+              // Already an array - use it directly
+              menuItemsToStore = schedule.menuItems;
+            } else if (typeof schedule.menuItems === 'object') {
+              // If it's an object (including empty {}), convert to array
+              if (Object.keys(schedule.menuItems).length === 0) {
+                // Empty object -> empty array
+                menuItemsToStore = [];
+              } else {
+                // Single object -> array with one item
+                menuItemsToStore = [schedule.menuItems];
+              }
+            } else if (typeof schedule.menuItems === 'string') {
+              // If it's a string, parse it
+              try {
+                const parsed = JSON.parse(schedule.menuItems);
+                if (Array.isArray(parsed)) {
+                  menuItemsToStore = parsed;
+                } else if (typeof parsed === 'object') {
+                  if (Object.keys(parsed).length === 0) {
+                    menuItemsToStore = [];
+                  } else {
+                    menuItemsToStore = [parsed];
+                  }
+                } else {
+                  menuItemsToStore = [];
+                }
+              } catch (e) {
+                menuItemsToStore = [];
+              }
+            } else {
+              menuItemsToStore = [];
+            }
+          }
+          // If null/undefined, menuItemsToStore remains [] (empty array)
+          
+          return server.prisma.mealPlanSchedule.create({
             data: {
               mealPlanId: planId,
               dayOfWeek: schedule.dayOfWeek,
@@ -162,11 +228,11 @@ export default async function (server, opts) {
               orderDeadline: schedule.orderDeadline,
               deliveryStart: schedule.deliveryStart || null,
               deliveryEnd: schedule.deliveryEnd || null,
-              maxOrders: schedule.maxOrders || null,
-              menuItems: schedule.menuItems ? JSON.parse(JSON.stringify(schedule.menuItems)) : null
+              maxOrders: maxOrders,
+              menuItems: menuItemsToStore
             }
-          })
-        )
+          });
+        })
       );
 
       return { message: 'Schedule updated successfully', schedules: createdSchedules };
@@ -200,8 +266,16 @@ export default async function (server, opts) {
           orderDeadline: { type: 'string' },
           deliveryStart: { type: 'string' },
           deliveryEnd: { type: 'string' },
-          maxOrders: { type: 'number', minimum: 1 },
-          menuItems: { type: 'object' }
+          maxOrders: { 
+            oneOf: [
+              { type: 'null' },
+              { type: 'number', minimum: 1 }
+            ]
+          },
+          menuItems: { 
+            type: ['array', 'null'],
+            items: { type: 'object' }
+          }
         }
       },
       response: {

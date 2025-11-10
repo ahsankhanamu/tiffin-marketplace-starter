@@ -162,7 +162,7 @@ export default async function (server, opts) {
                   deliveryStart: { type: 'string' },
                   deliveryEnd: { type: 'string' },
                   maxOrders: { type: 'number' },
-                  menuItems: { type: 'object' },
+                  menuItems: { type: 'array' },
                   createdAt: { type: 'string', format: 'date-time' },
                   updatedAt: { type: 'string', format: 'date-time' }
                 }
@@ -216,6 +216,7 @@ export default async function (server, opts) {
       }
 
       server.log.info(`Meal plan found: ${mealPlan.name}`);
+      server.log.info(`Schedules count: ${mealPlan.schedules?.length || 0}`);
       
       // Explicitly construct response object to ensure proper serialization
       const response = {
@@ -256,6 +257,9 @@ export default async function (server, opts) {
           updatedAt: s.updatedAt
         }))
       };
+      
+      server.log.info(`Response schedules count: ${response.schedules.length}`);
+      server.log.info(`First schedule sample:`, JSON.stringify(response.schedules[0] || {}));
       
       return response;
     } catch (err) {
@@ -472,10 +476,75 @@ export default async function (server, opts) {
       }
 
       const mealPlan = await server.prisma.mealPlan.findFirst({
-        where: { id: planId, kitchenId }
+        where: { id: planId, kitchenId },
+        include: {
+          orders: {
+            take: 1
+          },
+          subscriptions: {
+            where: {
+              isActive: true
+            },
+            take: 1
+          }
+        }
       });
       if (!mealPlan) return reply.code(404).send({ error: 'Meal plan not found' });
 
+      // Check for active (non-cancelled) orders
+      const activeOrdersCount = await server.prisma.order.count({
+        where: {
+          planId: planId,
+          status: { not: 'cancelled' }
+        }
+      });
+
+      if (activeOrdersCount > 0) {
+        return reply.code(400).send({ 
+          error: `Cannot delete meal plan. There are ${activeOrdersCount} active order(s) associated with this plan. Please cancel or complete all orders first.` 
+        });
+      }
+
+      // Check for active subscriptions
+      if (mealPlan.subscriptions.length > 0) {
+        return reply.code(400).send({ 
+          error: 'Cannot delete meal plan with active subscriptions. Please unsubscribe all users first.' 
+        });
+      }
+
+      // Delete cancelled orders (historical records) to allow meal plan deletion
+      const cancelledOrdersCount = await server.prisma.order.count({
+        where: {
+          planId: planId,
+          status: 'cancelled'
+        }
+      });
+
+      if (cancelledOrdersCount > 0) {
+        await server.prisma.order.deleteMany({
+          where: {
+            planId: planId,
+            status: 'cancelled'
+          }
+        });
+      }
+
+      // Delete schedules first (they have cascade delete, but being explicit)
+      await server.prisma.mealPlanSchedule.deleteMany({
+        where: { mealPlanId: planId }
+      });
+
+      // Delete trial usage records
+      await server.prisma.trialUsage.deleteMany({
+        where: { mealPlanId: planId }
+      });
+
+      // Delete all subscriptions (active and inactive)
+      await server.prisma.subscription.deleteMany({
+        where: { mealPlanId: planId }
+      });
+
+      // Now delete the meal plan
       await server.prisma.mealPlan.delete({
         where: { id: planId }
       });
@@ -483,6 +552,14 @@ export default async function (server, opts) {
       return { message: 'Meal plan deleted successfully' };
     } catch (err) {
       server.log.error('Error deleting meal plan:', err);
+      
+      // Check if it's a foreign key constraint error
+      if (err.message && err.message.includes('Foreign key constraint')) {
+        return reply.code(400).send({ 
+          error: 'Cannot delete meal plan. There are orders or subscriptions associated with this plan. Please cancel all active orders and subscriptions first.' 
+        });
+      }
+      
       return reply.code(400).send({ error: err.message || 'Failed to delete meal plan' });
     }
   });

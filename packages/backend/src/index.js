@@ -18,6 +18,8 @@ import mealPlansRoutes from './routes/mealPlans.js';
 import schedulesRoutes from './routes/schedules.js';
 import trialsRoutes from './routes/trials.js';
 import adminRoutes from './routes/admin.js';
+import subscriptionsRoutes from './routes/subscriptions.js';
+import imagesRoutes from './routes/images.js';
 import authMiddleware from './middleware/auth.js';
 import { swaggerSchemas, securitySchemes } from './schemas/swagger.js';
 
@@ -100,6 +102,8 @@ server.register(fastifySwagger, {
       { name: 'kitchens', description: 'Tiffin kitchen management' },
       { name: 'meal-plans', description: 'Meal plan management' },
       { name: 'orders', description: 'Order management' },
+      { name: 'subscriptions', description: 'Subscription management' },
+      { name: 'images', description: 'Image management' },
       { name: 'admin', description: 'Admin operations' }
     ]
   }
@@ -117,6 +121,8 @@ server.register(ordersRoutes, { prefix: '/api/orders' });
 server.register(mealPlansRoutes, { prefix: '/api/kitchens' });
 server.register(schedulesRoutes, { prefix: '/api/plans' });
 server.register(trialsRoutes, { prefix: '/api/plans' });
+server.register(subscriptionsRoutes, { prefix: '/api/subscriptions' });
+server.register(imagesRoutes, { prefix: '/api/images' });
 server.register(adminRoutes, { prefix: '/api/admin' });
 
 server.register(fastifySocket, {

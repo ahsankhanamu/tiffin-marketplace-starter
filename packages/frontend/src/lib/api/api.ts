@@ -39,13 +39,15 @@ export interface Kitchen {
   location?: { lat: number; lng: number };
   images?: string[];
   coverImage?: string;
+  ownerId?: string;
 }
 
 export interface MenuItem {
   name: string;
   quantity: string;
   description?: string;
-  image?: string;
+  image?: string; // Image ID
+  imageUrl?: string; // Full URL for display
   allergens?: string[];
   tags?: string[];
 }
@@ -92,11 +94,45 @@ export interface Order {
   userId: string;
   kitchenId: string;
   planId: string;
-  mealType?: 'lunch' | 'dinner';
+  mealType?: 'breakfast' | 'lunch' | 'dinner';
   isTrial: boolean;
-  status: 'created' | 'preparing' | 'out-for-delivery' | 'delivered';
+  status: 'created' | 'preparing' | 'out-for-delivery' | 'delivered' | 'cancelled';
   amount: number;
   scheduledDate?: string;
+  createdAt: string;
+}
+
+export interface AvailableMeal {
+  planId: string;
+  planName: string;
+  date: string;
+  dayOfWeek: number;
+  mealType: 'breakfast' | 'lunch' | 'dinner';
+  price: number;
+  orderDeadline: string;
+  isAvailable: boolean;
+}
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  mealPlanId: string;
+  mealType: 'breakfast' | 'lunch' | 'dinner';
+  dayOfWeek?: number;
+  isActive: boolean;
+  mealPlan?: {
+    id: string;
+    name: string;
+    kitchenId: string;
+  };
+}
+
+export interface Image {
+  id: string;
+  url: string;
+  filename: string;
+  mimeType: string;
+  size: number;
   createdAt: string;
 }
 
@@ -169,7 +205,7 @@ export async function createOrder(
   planId: string,
   amount: number,
   options?: {
-    mealType?: 'lunch' | 'dinner';
+    mealType?: 'breakfast' | 'lunch' | 'dinner';
     scheduledDate?: string;
     isTrial?: boolean;
   }
@@ -178,6 +214,31 @@ export async function createOrder(
     method: 'POST',
     body: JSON.stringify({ kitchenId, planId, amount, ...options })
   });
+}
+
+export async function getAvailableMeals(kitchenId: string, days = 7): Promise<AvailableMeal[]> {
+  return apiCall<AvailableMeal[]>(`/api/orders/available-meals?kitchenId=${kitchenId}&days=${days}`);
+}
+
+export async function subscribeToMealPlan(
+  mealPlanId: string,
+  mealType: 'breakfast' | 'lunch' | 'dinner',
+  dayOfWeek?: number
+): Promise<Subscription> {
+  return apiCall<Subscription>('/api/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({ mealPlanId, mealType, dayOfWeek })
+  });
+}
+
+export async function unsubscribeFromMealPlan(subscriptionId: string): Promise<{ success: boolean }> {
+  return apiCall<{ success: boolean }>(`/api/subscriptions/${subscriptionId}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function getMySubscriptions(): Promise<Subscription[]> {
+  return apiCall<Subscription[]>('/api/subscriptions/my');
 }
 
 export async function getOrder(id: string): Promise<Order> {
@@ -336,17 +397,30 @@ export async function checkTrialEligibility(planId: string): Promise<{ eligible:
   });
 }
 
-export async function getAvailableMeals(kitchenId?: string, days: number = 7): Promise<Array<{
-  planId: string;
-  planName: string;
-  date: string;
-  dayOfWeek: number;
-  mealType: 'lunch' | 'dinner';
-  price: number;
-  orderDeadline: string;
-  isAvailable: boolean;
-}>> {
-  const url = kitchenId ? `/api/orders/available-meals?kitchenId=${kitchenId}&days=${days}` : `/api/orders/available-meals?days=${days}`;
-  return apiCall(url);
+// Image management APIs
+export async function getImages(page = 1, limit = 50): Promise<{ images: Image[]; total: number; page: number; limit: number }> {
+  return apiCall<{ images: Image[]; total: number; page: number; limit: number }>(`/api/images?page=${page}&limit=${limit}`);
+}
+
+export async function uploadImage(file: File): Promise<Image> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = retrieveAuthToken();
+  const res = await fetch(`${apiBase}/api/images`, {
+    method: 'POST',
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    body: formData
+  });
+  if (!res.ok) {
+    const error = (await res.json().catch(() => ({ error: 'Request failed' }))) as ApiError;
+    throw error;
+  }
+  return res.json();
+}
+
+export async function deleteImage(imageId: string): Promise<{ message: string }> {
+  return apiCall<{ message: string }>(`/api/images/${imageId}`, {
+    method: 'DELETE'
+  });
 }
 

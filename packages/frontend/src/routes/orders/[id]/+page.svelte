@@ -40,7 +40,8 @@
     created: 'default',
     preparing: 'secondary',
     'out-for-delivery': 'secondary',
-    delivered: 'default'
+    delivered: 'default',
+    cancelled: 'destructive'
   };
 </script>
 
@@ -50,7 +51,7 @@
   {:else if order}
     <h1 class={cn('text-3xl font-bold mb-6')}>Order Details</h1>
     
-    <Card className={cn('p-6')}>
+    <Card class={cn('p-6')}>
       <div class={cn('space-y-4')}>
         <div class={cn('flex justify-between items-start')}>
           <div>

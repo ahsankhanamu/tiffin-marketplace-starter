@@ -17,7 +17,7 @@
   <h1 class={cn('text-3xl font-bold mb-6')}>Profile</h1>
   
   {#if auth.isAuthenticated && auth.user}
-    <Card className={cn('p-6')}>
+    <Card class={cn('p-6')}>
       <div class={cn('space-y-4')}>
         <div>
           <label class={cn('text-sm font-medium text-muted-foreground')}>Name</label>

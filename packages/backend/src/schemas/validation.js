@@ -61,7 +61,7 @@ export const createOrderSchema = z.object({
 });
 
 export const updateOrderStatusSchema = z.object({
-  status: z.enum(['created', 'preparing', 'out-for-delivery', 'delivered'])
+  status: z.enum(['created', 'preparing', 'out-for-delivery', 'delivered', 'cancelled'])
 });
 
 export const forgotPasswordSchema = z.object({
