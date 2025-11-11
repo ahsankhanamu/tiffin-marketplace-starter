@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getKitchen, getMealPlans, createMealPlan, deleteMealPlan, getKitchenOrders, updateOrderStatus, updateKitchen, type Kitchen, type MealPlan, type Order } from '$lib/api';
+  import { getKitchen, createMealPlan, deleteMealPlan, getKitchenOrders, updateOrderStatus, updateKitchen, type Kitchen, type MealPlan, type Order } from '$lib/api';
   import { authStore } from '$lib/stores/auth';
   import { initSocket, socketStore } from '$lib/stores/socket';
   import Button from '$lib/ui/Button.svelte';
@@ -186,11 +186,10 @@
     }
     
     try {
-      [kitchen, mealPlans] = await Promise.all([
-        getKitchen(id),
-        getMealPlans(id)
-      ]);
+      kitchen = await getKitchen(id);
       if (kitchen) {
+        // Use mealPlans from kitchen object (already included in API response)
+        mealPlans = kitchen.mealPlans || [];
         await loadOrders();
         if (kitchen.location) {
           locationLat = kitchen.location.lat;

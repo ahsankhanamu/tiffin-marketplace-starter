@@ -42,6 +42,7 @@ export interface Kitchen {
   ownerId?: string;
   mealTypes?: ('breakfast' | 'lunch' | 'dinner')[];
   rating?: number;
+  mealPlans?: MealPlan[];
 }
 
 export interface MenuItem {

@@ -32,12 +32,24 @@
   // Group meals by date
   const mealsByDate = $derived(() => {
     const grouped: Record<string, AvailableMeal[]> = {};
-    for (const meal of availableMeals) {
-      if (!grouped[meal.date]) {
-        grouped[meal.date] = [];
-      }
-      grouped[meal.date].push(meal);
+    
+    if (!availableMeals || availableMeals.length === 0) {
+      return grouped;
     }
+    
+    for (const meal of availableMeals) {
+      if (meal && meal.date) {
+        // Normalize date format (handle YYYY-MM-DD or ISO strings)
+        const dateStr = String(meal.date).split('T')[0];
+        if (dateStr) {
+          if (!grouped[dateStr]) {
+            grouped[dateStr] = [];
+          }
+          grouped[dateStr].push(meal);
+        }
+      }
+    }
+    
     return grouped;
   });
   
@@ -52,7 +64,15 @@
   
   // Format date for display
   function formatDate(dateStr: string): string {
-    const date = new Date(dateStr);
+    if (!dateStr) return 'Unknown Date';
+    
+    // Handle YYYY-MM-DD format (add time to avoid timezone issues)
+    const date = new Date(dateStr + 'T00:00:00');
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date string:', dateStr);
+      return dateStr;
+    }
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const mealDate = new Date(date);
@@ -80,16 +100,33 @@
   
   onMount(async () => {
     const id = $page.params.id;
+    if (!id) {
+      error = 'Kitchen ID is required';
+      loading = false;
+      return;
+    }
+    
     try {
-      [kitchen, availableMeals] = await Promise.all([
+      const [kitchenData, mealsData] = await Promise.all([
         getKitchen(id),
         getAvailableMeals(id, 7)
       ]);
+      
+      kitchen = kitchenData;
+      availableMeals = Array.isArray(mealsData) ? mealsData : [];
+      
+      // Ensure meals have the correct structure
+      if (availableMeals.length > 0) {
+        console.log('Available meals loaded:', availableMeals.length);
+        console.log('Sample meal:', availableMeals[0]);
+        console.log('Meal date property:', availableMeals[0]?.date);
+      }
       
       if (auth.isAuthenticated) {
         subscriptions = await getMySubscriptions();
       }
     } catch (err: unknown) {
+      console.error('Error loading kitchen data:', err);
       error = (err as { error?: string }).error || 'Failed to load kitchen';
     } finally {
       loading = false;
@@ -203,17 +240,93 @@
     {:else}
       <h2 class={cn('text-2xl font-semibold mb-4')}>Available Meals</h2>
       
-      {#if availableMeals.length === 0}
+      {#if loading}
+        <Card class={cn('p-6 text-center')}>
+          <p class={cn('text-muted-foreground')}>Loading meals...</p>
+        </Card>
+      {:else if availableMeals.length === 0}
         <Card class={cn('p-6 text-center')}>
           <p class={cn('text-muted-foreground')}>No meals available at this time</p>
         </Card>
       {:else}
-        <div class={cn('space-y-6')}>
-          {#each Object.entries(mealsByDate) as [date, meals]}
-            <Card class={cn('p-6')}>
-              <h3 class={cn('text-xl font-semibold mb-4')}>{formatDate(date)}</h3>
-              <div class={cn('space-y-4')}>
-                {#each meals as meal}
+        {#if Object.keys(mealsByDate).length === 0}
+          <!-- Fallback: Display meals directly if grouping failed -->
+          <Card class={cn('p-6')}>
+            <p class={cn('text-muted-foreground mb-4')}>Available Meals</p>
+            <div class={cn('space-y-4')}>
+              {#each availableMeals as meal}
+                {@const subscription = isSubscribed(meal.planId, meal.mealType, meal.dayOfWeek)}
+                {@const deadlinePassed = isDeadlinePassed(meal)}
+                <div class={cn('p-4 border rounded-lg', deadlinePassed && 'opacity-50')}>
+                  <div class={cn('flex justify-between items-start mb-3')}>
+                    <div>
+                      <div class={cn('flex items-center gap-2 mb-1')}>
+                        <Badge variant={meal.mealType === 'breakfast' ? 'default' : meal.mealType === 'lunch' ? 'secondary' : 'outline'}>
+                          {meal.mealType.charAt(0).toUpperCase() + meal.mealType.slice(1)}
+                        </Badge>
+                        <span class={cn('font-semibold')}>{meal.planName}</span>
+                      </div>
+                      <p class={cn('text-sm text-muted-foreground')}>
+                        Date: {meal.date || 'Unknown'} | Order by: {meal.orderDeadline}
+                      </p>
+                      {#if deadlinePassed}
+                        <p class={cn('text-xs text-destructive mt-1')}>Deadline passed</p>
+                      {/if}
+                    </div>
+                    <p class={cn('text-xl font-bold')}>${meal.price}</p>
+                  </div>
+                  
+                  {#if auth.isAuthenticated}
+                    <div class={cn('flex gap-2')}>
+                      {#if subscription}
+                        <Button
+                          variant="outline"
+                          onclick={() => handleUnsubscribe(subscription)}
+                          disabled={subscribeLoading === subscription.id || deadlinePassed}
+                          class={cn('flex-1')}
+                        >
+                          {subscribeLoading === subscription.id ? 'Unsubscribing...' : 'Unsubscribe'}
+                        </Button>
+                        <Button
+                          onclick={() => handleOrder(meal)}
+                          disabled={orderLoading === `${meal.planId}-${meal.mealType}-${meal.date}` || deadlinePassed}
+                          class={cn('flex-1')}
+                        >
+                          {orderLoading === `${meal.planId}-${meal.mealType}-${meal.date}` ? 'Ordering...' : 'Order (Additional)'}
+                        </Button>
+                      {:else}
+                        <Button
+                          variant="outline"
+                          onclick={() => handleSubscribe(meal)}
+                          disabled={subscribeLoading === `${meal.planId}-${meal.mealType}-${meal.date}` || deadlinePassed}
+                          class={cn('flex-1')}
+                        >
+                          {subscribeLoading === `${meal.planId}-${meal.mealType}-${meal.date}` ? 'Subscribing...' : 'Subscribe'}
+                        </Button>
+                        <Button
+                          onclick={() => handleOrder(meal)}
+                          disabled={orderLoading === `${meal.planId}-${meal.mealType}-${meal.date}` || deadlinePassed}
+                          class={cn('flex-1')}
+                        >
+                          {orderLoading === `${meal.planId}-${meal.mealType}-${meal.date}` ? 'Ordering...' : 'Order'}
+                        </Button>
+                      {/if}
+                    </div>
+                  {:else}
+                    <Button disabled class={cn('w-full')}>Login to Order</Button>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          </Card>
+        {:else}
+          <div class={cn('space-y-6')}>
+            {#each Object.entries(mealsByDate) as [date, meals]}
+              {#if meals && meals.length > 0}
+              <Card class={cn('p-6')}>
+                <h3 class={cn('text-xl font-semibold mb-4')}>{formatDate(date)}</h3>
+                <div class={cn('space-y-4')}>
+                  {#each meals as meal}
                   {@const subscription = isSubscribed(meal.planId, meal.mealType, meal.dayOfWeek)}
                   {@const deadlinePassed = isDeadlinePassed(meal)}
                   <div class={cn('p-4 border rounded-lg', deadlinePassed && 'opacity-50')}>
@@ -278,8 +391,10 @@
                 {/each}
               </div>
             </Card>
+            {/if}
           {/each}
         </div>
+        {/if}
       {/if}
     {/if}
   {/if}
