@@ -216,7 +216,7 @@
     )}
   >
     <!-- Header with toggle button -->
-    <div class={cn("flex items-center justify-between mb-6 px-2")}>
+    <div class={cn("flex items-center justify-between mb-6", showSidebar && "px-2")}>
       {#if showSidebar}
         <h2 class={cn("text-lg font-semibold text-foreground")}>
           Tiffin Market

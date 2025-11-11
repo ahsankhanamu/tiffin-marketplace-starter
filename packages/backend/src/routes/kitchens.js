@@ -19,12 +19,28 @@ export default async function (server, opts) {
           type: 'array',
           items: {
             type: 'object',
+            additionalProperties: true,
             properties: {
               id: { type: 'string' },
               title: { type: 'string' },
               description: { type: 'string' },
-              location: { type: 'object' },
-              distance_m: { type: 'number' }
+              ownerId: { type: 'string' },
+              location: { 
+                oneOf: [
+                  { type: 'null' },
+                  {
+                    type: 'object',
+                    properties: {
+                      lat: { type: 'number' },
+                      lng: { type: 'number' }
+                    },
+                    additionalProperties: true
+                  }
+                ]
+              },
+              distance_m: { type: 'number' },
+              mealTypes: { type: 'array', items: { type: 'string' } },
+              rating: { type: 'number' }
             }
           }
         },
@@ -59,6 +75,30 @@ export default async function (server, opts) {
           orderBy: { createdAt: 'desc' }
         });
 
+        // Enrich with meal types from meal plans
+        const kitchenIds = ownerKitchens.map(k => k.id);
+        const mealPlans = await server.prisma.mealPlan.findMany({
+          where: { kitchenId: { in: kitchenIds } },
+          include: {
+            schedules: {
+              select: { mealType: true }
+            }
+          }
+        });
+
+        // Group meal plans by kitchen
+        const mealPlansByKitchen = {};
+        for (const plan of mealPlans) {
+          if (!mealPlansByKitchen[plan.kitchenId]) {
+            mealPlansByKitchen[plan.kitchenId] = new Set();
+          }
+          for (const schedule of plan.schedules) {
+            if (schedule.mealType && ['breakfast', 'lunch', 'dinner'].includes(schedule.mealType)) {
+              mealPlansByKitchen[plan.kitchenId].add(schedule.mealType);
+            }
+          }
+        }
+
         return ownerKitchens.map(kitchen => {
           let location = kitchen.location;
           if (typeof location === 'string' && location) {
@@ -68,7 +108,16 @@ export default async function (server, opts) {
               location = null;
             }
           }
-          return { ...kitchen, location, distance_m: null };
+          const mealTypes = mealPlansByKitchen[kitchen.id] 
+            ? Array.from(mealPlansByKitchen[kitchen.id]) 
+            : [];
+          return { 
+            ...kitchen, 
+            location, 
+            distance_m: null,
+            mealTypes,
+            rating: 0
+          };
         });
       }
     } catch (authErr) {
@@ -160,7 +209,65 @@ export default async function (server, opts) {
         res = await server.prisma.$queryRawUnsafe(sql.replace(/\n/g,' '), ...params);
       }
       
-      return res;
+      // Enrich with meal types from meal plans
+      const kitchenIds = res.map(k => k.id);
+      const mealPlans = await server.prisma.mealPlan.findMany({
+        where: { kitchenId: { in: kitchenIds } },
+        include: {
+          schedules: {
+            select: { mealType: true }
+          }
+        }
+      });
+
+      // Group meal plans by kitchen
+      const mealPlansByKitchen = {};
+      for (const plan of mealPlans) {
+        if (!mealPlansByKitchen[plan.kitchenId]) {
+          mealPlansByKitchen[plan.kitchenId] = new Set();
+        }
+        for (const schedule of plan.schedules) {
+          if (schedule.mealType && ['breakfast', 'lunch', 'dinner'].includes(schedule.mealType)) {
+            mealPlansByKitchen[plan.kitchenId].add(schedule.mealType);
+          }
+        }
+      }
+
+      // Add meal types and rating to each kitchen, and parse location
+      return res.map(kitchen => {
+        const mealTypes = mealPlansByKitchen[kitchen.id] 
+          ? Array.from(mealPlansByKitchen[kitchen.id]) 
+          : [];
+        
+        // Parse location - handle both PostGIS GeoJSON and JSON string formats
+        let parsedLocation = null;
+        if (kitchen.location) {
+          if (typeof kitchen.location === 'string') {
+            try {
+              parsedLocation = JSON.parse(kitchen.location);
+            } catch {
+              parsedLocation = null;
+            }
+          } else if (typeof kitchen.location === 'object') {
+            // PostGIS returns GeoJSON format: {type: "Point", coordinates: [lng, lat]}
+            if (kitchen.location.type === 'Point' && Array.isArray(kitchen.location.coordinates)) {
+              parsedLocation = {
+                lat: kitchen.location.coordinates[1],
+                lng: kitchen.location.coordinates[0]
+              };
+            } else if ('lat' in kitchen.location && 'lng' in kitchen.location) {
+              parsedLocation = kitchen.location;
+            }
+          }
+        }
+        
+        return {
+          ...kitchen,
+          location: parsedLocation,
+          mealTypes,
+          rating: 0 // Default rating (can be enhanced later with actual rating system)
+        };
+      });
     } catch (err) {
       server.log.error('Error fetching nearby kitchens:', err);
       // Fallback: return all kitchens without distance calculation
@@ -179,20 +286,66 @@ export default async function (server, opts) {
         take: 50
       });
       
-      // Transform location if it's a string
-      return kitchens.map(kitchen => ({
-        ...kitchen,
-        location: typeof kitchen.location === 'string' 
-          ? (() => {
-              try {
-                return JSON.parse(kitchen.location);
-              } catch {
-                return null;
-              }
-            })()
-          : kitchen.location,
-        distance_m: null
-      }));
+      // Enrich with meal types from meal plans
+      const kitchenIds = kitchens.map(k => k.id);
+      const mealPlans = await server.prisma.mealPlan.findMany({
+        where: { kitchenId: { in: kitchenIds } },
+        include: {
+          schedules: {
+            select: { mealType: true }
+          }
+        }
+      });
+
+      // Group meal plans by kitchen
+      const mealPlansByKitchen = {};
+      for (const plan of mealPlans) {
+        if (!mealPlansByKitchen[plan.kitchenId]) {
+          mealPlansByKitchen[plan.kitchenId] = new Set();
+        }
+        for (const schedule of plan.schedules) {
+          if (schedule.mealType && ['breakfast', 'lunch', 'dinner'].includes(schedule.mealType)) {
+            mealPlansByKitchen[plan.kitchenId].add(schedule.mealType);
+          }
+        }
+      }
+
+      // Transform location if it's a string and add meal types
+      return kitchens.map(kitchen => {
+        const mealTypes = mealPlansByKitchen[kitchen.id] 
+          ? Array.from(mealPlansByKitchen[kitchen.id]) 
+          : [];
+        
+        // Parse location - handle both PostGIS GeoJSON and JSON string formats
+        let parsedLocation = null;
+        if (kitchen.location) {
+          if (typeof kitchen.location === 'string') {
+            try {
+              parsedLocation = JSON.parse(kitchen.location);
+            } catch {
+              parsedLocation = null;
+            }
+          } else if (typeof kitchen.location === 'object') {
+            // PostGIS returns GeoJSON format: {type: "Point", coordinates: [lng, lat]}
+            if (kitchen.location.type === 'Point' && Array.isArray(kitchen.location.coordinates)) {
+              parsedLocation = {
+                lat: kitchen.location.coordinates[1],
+                lng: kitchen.location.coordinates[0]
+              };
+            } else if ('lat' in kitchen.location && 'lng' in kitchen.location) {
+              parsedLocation = kitchen.location;
+            }
+          }
+        }
+        
+        return {
+          ...kitchen,
+          location: parsedLocation,
+          distance_m: null,
+          mealTypes,
+          rating: 0 // Default rating (can be enhanced later with actual rating system)
+        };
+      });
     }
   });
 
@@ -277,15 +430,31 @@ export default async function (server, opts) {
       response: {
         200: {
           type: 'object',
+          additionalProperties: true,
           properties: {
             id: { type: 'string' },
             title: { type: 'string' },
             description: { type: 'string' },
             ownerId: { type: 'string' },
-            location: { type: 'object' },
+            location: { 
+              oneOf: [
+                { type: 'null' },
+                {
+                  type: 'object',
+                  properties: {
+                    lat: { type: 'number' },
+                    lng: { type: 'number' }
+                  },
+                  additionalProperties: true
+                }
+              ]
+            },
             images: { type: 'array', items: { type: 'string' } },
-            coverImage: { type: 'string' },
-            createdAt: { type: 'string', format: 'date-time' }
+            coverImage: { type: ['string', 'null'] },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+            mealPlans: { type: 'array' },
+            owner: { type: 'object' }
           }
         },
         404: {
@@ -309,17 +478,36 @@ export default async function (server, opts) {
     });
     if (!kitchen) return reply.code(404).send({ error: 'Kitchen not found' });
     
-    // Parse location if it's a string (JSON format when PostGIS is not available)
-    if (typeof kitchen.location === 'string' && kitchen.location) {
-      try {
-        kitchen.location = JSON.parse(kitchen.location);
-      } catch {
-        // If parsing fails, keep as is or set to null
-        kitchen.location = null;
+    // Parse location - handle both PostGIS GeoJSON and JSON string formats
+    let parsedLocation = null;
+    
+    if (kitchen.location) {
+      if (typeof kitchen.location === 'string') {
+        // JSON string format (when PostGIS is not available)
+        try {
+          parsedLocation = JSON.parse(kitchen.location);
+        } catch {
+          parsedLocation = null;
+        }
+      } else if (typeof kitchen.location === 'object') {
+        // PostGIS returns GeoJSON format: {type: "Point", coordinates: [lng, lat]}
+        if (kitchen.location.type === 'Point' && Array.isArray(kitchen.location.coordinates)) {
+          // Convert GeoJSON to {lat, lng} format for frontend
+          parsedLocation = {
+            lat: kitchen.location.coordinates[1],
+            lng: kitchen.location.coordinates[0]
+          };
+        } else if ('lat' in kitchen.location && 'lng' in kitchen.location) {
+          // Already in {lat, lng} format
+          parsedLocation = kitchen.location;
+        }
       }
     }
     
-    return kitchen;
+    return {
+      ...kitchen,
+      location: parsedLocation
+    };
   });
 
   server.post('/', {
@@ -444,7 +632,9 @@ export default async function (server, opts) {
         properties: {
           title: { type: 'string' },
           description: { type: 'string' },
-          coverImage: { type: 'string' }
+          coverImage: { type: 'string' },
+          lat: { type: 'number', minimum: -90, maximum: 90 },
+          lng: { type: 'number', minimum: -180, maximum: 180 }
         }
       },
       response: {
@@ -491,10 +681,67 @@ export default async function (server, opts) {
       if (request.body.description !== undefined) updateData.description = request.body.description;
       if (request.body.coverImage !== undefined) updateData.coverImage = request.body.coverImage;
       
+      // Handle location update
+      if (request.body.lat !== undefined && request.body.lng !== undefined) {
+        // Check if PostGIS is available
+        const availableCheck = await server.prisma.$queryRawUnsafe(`
+          SELECT EXISTS(
+            SELECT 1 FROM pg_available_extensions WHERE name = 'postgis'
+          ) AS postgis_available;
+        `);
+        const postgisAvailable = availableCheck[0]?.postgis_available || false;
+        
+        let postgisInstalled = false;
+        if (postgisAvailable) {
+          const installedCheck = await server.prisma.$queryRawUnsafe(`
+            SELECT EXISTS(
+              SELECT 1 FROM pg_extension WHERE extname = 'postgis'
+            ) AS postgis_installed;
+          `);
+          postgisInstalled = installedCheck[0]?.postgis_installed || false;
+          
+          if (!postgisInstalled) {
+            try {
+              await server.prisma.$executeRawUnsafe('CREATE EXTENSION IF NOT EXISTS postgis');
+              postgisInstalled = true;
+            } catch (installError) {
+              server.log.warn('Failed to install PostGIS:', installError.message);
+              postgisInstalled = false;
+            }
+          }
+        }
+
+        if (postgisInstalled) {
+          // Update using PostGIS
+          await server.prisma.$executeRawUnsafe(`
+            UPDATE "Kitchen"
+            SET location = ST_SetSRID(ST_MakePoint($1, $2), 4326)
+            WHERE id = $3
+          `, parseFloat(request.body.lng), parseFloat(request.body.lat), id);
+        } else {
+          // Update as JSON text
+          const locationJson = JSON.stringify({ lng: parseFloat(request.body.lng), lat: parseFloat(request.body.lat) });
+          await server.prisma.$executeRawUnsafe(`
+            UPDATE "Kitchen"
+            SET location = $1
+            WHERE id = $2
+          `, locationJson, id);
+        }
+      }
+      
       const updated = await server.prisma.kitchen.update({
         where: { id },
         data: updateData
       });
+      
+      // Parse location if it's a string
+      if (typeof updated.location === 'string' && updated.location) {
+        try {
+          updated.location = JSON.parse(updated.location);
+        } catch {
+          updated.location = null;
+        }
+      }
       
       return updated;
     } catch (err) {

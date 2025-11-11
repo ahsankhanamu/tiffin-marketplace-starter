@@ -40,6 +40,8 @@ export interface Kitchen {
   images?: string[];
   coverImage?: string;
   ownerId?: string;
+  mealTypes?: ('breakfast' | 'lunch' | 'dinner')[];
+  rating?: number;
 }
 
 export interface MenuItem {
@@ -144,7 +146,7 @@ export interface User {
   createdAt: string;
 }
 
-export async function getNearby(lng: number, lat: number, radius = 5000): Promise<Kitchen[]> {
+export async function getNearby(lng: number, lat: number, radius = 15000): Promise<Kitchen[]> {
   try {
     return await apiCall<Kitchen[]>(`/api/kitchens/nearby?lng=${lng}&lat=${lat}&radius=${radius}`);
   } catch {

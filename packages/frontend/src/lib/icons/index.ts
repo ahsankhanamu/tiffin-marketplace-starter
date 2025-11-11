@@ -12,4 +12,6 @@ export { default as Plus } from './Plus.svelte';
 export { default as Upload } from './Upload.svelte';
 export { default as Trash2 } from './Trash2.svelte';
 export { default as ShoppingBag } from './ShoppingBag.svelte';
+export { default as Star } from './Star.svelte';
+export { default as UtensilsCrossed } from './UtensilsCrossed.svelte';
 

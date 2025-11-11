@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getKitchen, getMealPlans, createMealPlan, deleteMealPlan, getKitchenOrders, updateOrderStatus, type Kitchen, type MealPlan, type Order } from '$lib/api';
+  import { getKitchen, getMealPlans, createMealPlan, deleteMealPlan, getKitchenOrders, updateOrderStatus, updateKitchen, type Kitchen, type MealPlan, type Order } from '$lib/api';
   import { authStore } from '$lib/stores/auth';
   import { initSocket, socketStore } from '$lib/stores/socket';
   import Button from '$lib/ui/Button.svelte';
@@ -10,6 +10,7 @@
   import Badge from '$lib/ui/Badge.svelte';
   import Input from '$lib/ui/Input.svelte';
   import Label from '$lib/ui/Label.svelte';
+  import MapPicker from '$lib/ui/MapPicker.svelte';
   import { cn } from '$lib/cn';
   import * as Dialog from '$lib/components/ui/dialog';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
@@ -88,6 +89,12 @@
   let planToDelete = $state<MealPlan | null>(null);
   let deleting = $state(false);
   let socket = $derived.by(() => $socketStore);
+  
+  // Location editing
+  let locationEditingEnabled = $state(false);
+  let locationLat = $state<number | null>(null);
+  let locationLng = $state<number | null>(null);
+  let updatingLocation = $state(false);
   
   // Meal type and day selection
   let selectedMealTypes = $state<Set<'breakfast' | 'lunch' | 'dinner'>>(new Set(['lunch', 'dinner']));
@@ -185,6 +192,10 @@
       ]);
       if (kitchen) {
         await loadOrders();
+        if (kitchen.location) {
+          locationLat = kitchen.location.lat;
+          locationLng = kitchen.location.lng;
+        }
       }
     } catch (err: unknown) {
       error = (err as { error?: string }).error || 'Failed to load data';
@@ -280,6 +291,43 @@
       deleting = false;
     }
   }
+  
+  function handleLocationSelect(lat: number, lng: number): void {
+    locationLat = lat;
+    locationLng = lng;
+  }
+  
+  async function handleUpdateLocation(): Promise<void> {
+    if (!kitchen || locationLat === null || locationLng === null) return;
+    
+    updatingLocation = true;
+    try {
+      await updateKitchen(kitchen.id, {
+        lat: locationLat,
+        lng: locationLng
+      });
+      if (kitchen.location) {
+        kitchen.location.lat = locationLat;
+        kitchen.location.lng = locationLng;
+      } else {
+        kitchen.location = { lat: locationLat, lng: locationLng };
+      }
+      locationEditingEnabled = false;
+      error = '';
+    } catch (err: unknown) {
+      error = (err as { error?: string }).error || 'Failed to update location';
+    } finally {
+      updatingLocation = false;
+    }
+  }
+  
+  function handleCancelLocationEdit(): void {
+    if (kitchen?.location) {
+      locationLat = kitchen.location.lat;
+      locationLng = kitchen.location.lng;
+    }
+    locationEditingEnabled = false;
+  }
 </script>
 
 <div class={cn('container mx-auto p-6 max-w-6xl')}>
@@ -287,6 +335,88 @@
     <p>Loading...</p>
   {:else if kitchen}
     <h1 class={cn('text-3xl font-bold mb-6')}>{kitchen.title}</h1>
+    
+    {#if error}
+      <div class={cn('mb-4 p-3 rounded-md bg-destructive/10 text-destructive text-sm')}>
+        {error}
+      </div>
+    {/if}
+    
+    <!-- Location Editing Section -->
+    <Card class={cn('p-6 mb-6')}>
+      <div class={cn('flex items-center justify-between mb-4')}>
+        <div>
+          <h2 class={cn('text-xl font-semibold mb-1')}>Kitchen Location</h2>
+          <p class={cn('text-sm text-muted-foreground')}>
+            Update your kitchen's location on the map
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={locationEditingEnabled}
+          onclick={() => {
+            locationEditingEnabled = !locationEditingEnabled;
+            if (!locationEditingEnabled) {
+              handleCancelLocationEdit();
+            }
+          }}
+          class={cn(
+            'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+            locationEditingEnabled ? 'bg-primary' : 'bg-muted',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
+          )}
+        >
+          <span
+            class={cn(
+              'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+              locationEditingEnabled ? 'translate-x-6' : 'translate-x-1'
+            )}
+          />
+        </button>
+      </div>
+      
+      {#if locationEditingEnabled}
+        <div class={cn('space-y-4')}>
+          <MapPicker
+            lat={locationLat}
+            lng={locationLng}
+            location={kitchen.location}
+            onLocationSelect={handleLocationSelect}
+            enabled={locationEditingEnabled}
+            height="400px"
+            showCoordinates={true}
+          />
+          <div class={cn('flex gap-2 justify-end')}>
+            <Button
+              variant="outline"
+              onclick={handleCancelLocationEdit}
+              disabled={updatingLocation}
+            >
+              Cancel
+            </Button>
+            <Button
+              onclick={handleUpdateLocation}
+              disabled={updatingLocation || locationLat === null || locationLng === null}
+            >
+              {updatingLocation ? 'Updating...' : 'Save Location'}
+            </Button>
+          </div>
+        </div>
+      {:else if kitchen.location}
+        <MapPicker
+          location={kitchen.location}
+          enabled={false}
+          readonly={true}
+          height="300px"
+          showCoordinates={false}
+        />
+      {:else}
+        <p class={cn('text-sm text-muted-foreground')}>
+          No location set. Enable location editing to set your kitchen's location.
+        </p>
+      {/if}
+    </Card>
     
     <div class={cn('grid gap-6 md:grid-cols-2')}>
       <div>

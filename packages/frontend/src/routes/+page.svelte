@@ -92,11 +92,9 @@
         <div>
           <h2 class={cn('text-xl font-semibold mb-3')}>Map View</h2>
           <KitchensMap
-            kitchens={kitchens}
             userLocation={userLocation}
-            height="500px"
+            height="600px"
             onKitchenClick={handleKitchenClick}
-            isOwner={false}
           />
         </div>
       {/if}
@@ -120,7 +118,9 @@
                 {/if}
                 {#if !isOwner && k.distance_m}
                   <p class={cn('text-xs text-muted-foreground mb-3')}>
-                    Distance: {Math.round(k.distance_m)} m
+                    Distance: {k.distance_m >= 1000 
+                      ? `${(k.distance_m / 1000).toFixed(1)} km`
+                      : `${Math.round(k.distance_m)} m`}
                   </p>
                 {/if}
                 {#if isOwner}
