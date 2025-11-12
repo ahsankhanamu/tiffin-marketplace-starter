@@ -2,19 +2,43 @@ import { retrieveAuthToken } from '$lib/utils/persistence';
 
 export const apiBase = (import.meta.env.VITE_API_BASE as string) || 'http://localhost:4000';
 
+// Flag to enable/disable ngrok skip browser warning header
+// Set VITE_NGROK_SKIP_WARNING=true in environment to enable
+const shouldSkipNgrokWarning = import.meta.env.VITE_NGROK_SKIP_WARNING === "true";
+
 interface ApiError {
   error: string;
 }
 
-function getHeaders(token: string | null, hasBody: boolean = false): Record<string, string> {
+/**
+ * Centralized function to get headers for all API requests
+ * @param token - Authentication token (optional)
+ * @param hasBody - Whether the request has a body (for Content-Type)
+ * @param additionalHeaders - Any additional headers to include
+ * @returns Headers object for fetch requests
+ */
+function getHeaders(
+  token: string | null = null, 
+  hasBody: boolean = false,
+  additionalHeaders: Record<string, string> = {}
+): Record<string, string> {
   const headers: Record<string, string> = {};
+  
+  // Only add ngrok header if flag is enabled
+  if (shouldSkipNgrokWarning) {
+    headers['ngrok-skip-browser-warning'] = 'true';
+  }
+  
   if (hasBody) {
     headers['Content-Type'] = 'application/json';
   }
+  
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
-  return headers;
+  
+  // Merge any additional headers
+  return { ...headers, ...additionalHeaders };
 }
 
 async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
@@ -332,9 +356,11 @@ export async function uploadKitchenImage(kitchenId: string, file: File): Promise
   const formData = new FormData();
   formData.append('file', file);
   const token = retrieveAuthToken();
+  const headers = getHeaders(token, false);
+  
   const res = await fetch(`${apiBase}/api/kitchens/${kitchenId}/images`, {
     method: 'POST',
-    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    headers,
     body: formData
   });
   if (!res.ok) {
@@ -443,9 +469,11 @@ export async function uploadImage(file: File): Promise<Image> {
   const formData = new FormData();
   formData.append('file', file);
   const token = retrieveAuthToken();
+  const headers = getHeaders(token, false);
+  
   const res = await fetch(`${apiBase}/api/images`, {
     method: 'POST',
-    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    headers,
     body: formData
   });
   if (!res.ok) {

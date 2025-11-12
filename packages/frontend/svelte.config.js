@@ -1,15 +1,23 @@
-import adapter from "@sveltejs/adapter-node";
+import adapterNode from "@sveltejs/adapter-node";
+import adapterVercel from "@sveltejs/adapter-vercel";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+
+// Use Vercel adapter when deploying to Vercel, otherwise use Node adapter
+const adapter = process.env.VERCEL 
+  ? adapterVercel({
+      runtime: 'nodejs20.x'
+    })
+  : adapterNode({
+      out: 'build',
+      precompress: false,
+      envPrefix: 'VITE_'
+    });
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
   preprocess: vitePreprocess(),
   kit: {
-    adapter: adapter({
-      out: 'build',
-      precompress: false,
-      envPrefix: 'VITE_'
-    }),
+    adapter: adapter,
     alias: {
       "@ui": "./src/lib/components/ui",
     },
