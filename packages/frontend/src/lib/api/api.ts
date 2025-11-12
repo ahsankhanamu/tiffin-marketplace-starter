@@ -111,22 +111,36 @@ export interface AvailableMeal {
   date: string;
   dayOfWeek: number;
   mealType: 'breakfast' | 'lunch' | 'dinner';
-  price: number;
+  price: number; // Plan price for display
   orderDeadline: string;
   isAvailable: boolean;
+  schedulePrice?: number | null; // Individual meal price if set by owner
 }
 
+/**
+ * Subscription interface.
+ * Relationship: Subscription → MealPlan → Kitchen
+ * Users subscribe to meal plans, not kitchens directly.
+ * Each meal plan belongs to a kitchen.
+ */
 export interface Subscription {
   id: string;
   userId: string;
-  mealPlanId: string;
+  mealPlanId: string; // Subscription is tied to a meal plan, not a kitchen
   mealType: 'breakfast' | 'lunch' | 'dinner';
   dayOfWeek?: number;
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   mealPlan?: {
     id: string;
     name: string;
-    kitchenId: string;
+    kitchenId: string; // Meal plan belongs to a kitchen
   };
 }
 
@@ -223,6 +237,11 @@ export async function getAvailableMeals(kitchenId: string, days = 7): Promise<Av
   return apiCall<AvailableMeal[]>(`/api/orders/available-meals?kitchenId=${kitchenId}&days=${days}`);
 }
 
+/**
+ * Subscribe to a meal plan.
+ * Note: Users subscribe to meal plans (not kitchens). Each meal plan belongs to a kitchen.
+ * Relationship: Subscription → MealPlan → Kitchen
+ */
 export async function subscribeToMealPlan(
   mealPlanId: string,
   mealType: 'breakfast' | 'lunch' | 'dinner',
@@ -240,8 +259,23 @@ export async function unsubscribeFromMealPlan(subscriptionId: string): Promise<{
   });
 }
 
+/**
+ * Get current user's subscriptions.
+ * Note: Subscriptions are tied to meal plans, not kitchens.
+ * Relationship: Subscription → MealPlan → Kitchen
+ */
 export async function getMySubscriptions(): Promise<Subscription[]> {
   return apiCall<Subscription[]>('/api/subscriptions/my');
+}
+
+/**
+ * Get subscriptions for meal plans belonging to a kitchen.
+ * Note: Subscriptions are tied to meal plans, not kitchens directly.
+ * This endpoint returns all subscriptions for meal plans that belong to the specified kitchen.
+ * Relationship: Subscription → MealPlan → Kitchen
+ */
+export async function getKitchenSubscriptions(kitchenId: string): Promise<Subscription[]> {
+  return apiCall<Subscription[]>(`/api/subscriptions/kitchen/${kitchenId}`);
 }
 
 export async function getOrder(id: string): Promise<Order> {

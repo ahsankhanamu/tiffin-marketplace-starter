@@ -55,7 +55,7 @@ export const createOrderSchema = z.object({
   kitchenId: z.string(),
   planId: z.string(),
   amount: z.number().positive(),
-  mealType: z.enum(['lunch', 'dinner']).optional(),
+  mealType: z.enum(['breakfast', 'lunch', 'dinner']).optional(),
   scheduledDate: z.string().datetime().optional(),
   isTrial: z.boolean().default(false)
 });

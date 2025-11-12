@@ -1,5 +1,38 @@
 import { createOrderSchema, updateOrderStatusSchema } from '../schemas/validation.js';
 
+// Calculate per-meal price from plan price for a single day order
+// Formula: (plan price per day) / (meals per day) * 1.2
+// First calculate price per day based on billing cycle, then per meal
+function calculatePerMealPrice(planPrice, billingCycle, mealsPerDay = 3) {
+  let daysInCycle;
+  switch (billingCycle) {
+    case 'daily':
+      daysInCycle = 1;
+      break;
+    case 'weekly':
+      daysInCycle = 7;
+      break;
+    case 'biweekly':
+      daysInCycle = 14;
+      break;
+    case 'monthly':
+      daysInCycle = 30;
+      break;
+    case 'one-off':
+      daysInCycle = 1;
+      break;
+    default:
+      daysInCycle = 30; // Default to monthly
+  }
+  
+  // Calculate price per day (for a single day order)
+  const pricePerDay = planPrice / daysInCycle;
+  
+  // Calculate price per meal and add 20%
+  const pricePerMeal = pricePerDay / mealsPerDay;
+  return Math.round((pricePerMeal * 1.2) * 100) / 100; // Add 20% and round to 2 decimals
+}
+
 export default async function (server, opts) {
   server.post('/', {
     schema: {
@@ -131,8 +164,12 @@ export default async function (server, opts) {
           }
         }
 
-        if (schedule.price !== null) {
+        if (schedule.price !== null && schedule.price > 0) {
           finalAmount = schedule.price;
+        } else {
+          // Calculate per-meal price from plan price
+          // Use 3 meals per day (breakfast, lunch, dinner) as standard
+          finalAmount = calculatePerMealPrice(mealPlan.price, mealPlan.billingCycle, 3);
         }
       }
 
@@ -248,7 +285,7 @@ export default async function (server, opts) {
         required: ['planId', 'mealType', 'scheduledDate'],
         properties: {
           planId: { type: 'string' },
-          mealType: { type: 'string', enum: ['lunch', 'dinner'] },
+          mealType: { type: 'string', enum: ['breakfast', 'lunch', 'dinner'] },
           scheduledDate: { type: 'string', format: 'date-time' }
         }
       },
@@ -345,7 +382,8 @@ export default async function (server, opts) {
               mealType: { type: 'string' },
               price: { type: 'number' },
               orderDeadline: { type: 'string' },
-              isAvailable: { type: 'boolean' }
+              isAvailable: { type: 'boolean' },
+              schedulePrice: { type: ['number', 'null'] }
             }
           }
         }
@@ -379,15 +417,18 @@ export default async function (server, opts) {
               deadline.setHours(deadlineHour, deadlineMinute, 0, 0);
 
               if (now <= deadline) {
+                // Return plan price for display, not calculated per-meal price
+                // Per-meal price will be calculated when creating the order
                 availableMeals.push({
                   planId: plan.id,
                   planName: plan.name,
                   date: date.toISOString().split('T')[0],
                   dayOfWeek,
                   mealType: schedule.mealType,
-                  price: schedule.price ?? plan.price,
+                  price: plan.price, // Keep plan price for display
                   orderDeadline: schedule.orderDeadline,
-                  isAvailable: true
+                  isAvailable: true,
+                  schedulePrice: schedule.price // Include schedule price if set
                 });
               }
             }

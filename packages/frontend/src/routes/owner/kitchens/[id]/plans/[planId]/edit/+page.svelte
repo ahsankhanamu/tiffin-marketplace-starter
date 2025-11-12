@@ -25,13 +25,13 @@
   let planName = $state('');
   let description = $state('');
   let price = $state('0');
-  let billingCycle = $state<'daily' | 'weekly' | 'monthly' | 'one-off'>('one-off');
+  let billingCycle = $state<'daily' | 'weekly' | 'biweekly' | 'monthly'>('monthly');
   let billingCycleOpen = $state(false);
   
   const billingCycleOptions = [
-    { value: 'one-off', label: 'One-off' },
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
+    { value: 'biweekly', label: 'Bi-weekly' },
     { value: 'monthly', label: 'Monthly' }
   ];
   
@@ -296,9 +296,9 @@
         planName = String(mealPlan.name || '');
         description = String(mealPlan.description || '');
         price = mealPlan.price != null && !isNaN(mealPlan.price) ? String(mealPlan.price) : '0';
-        billingCycle = (mealPlan.billingCycle && ['daily', 'weekly', 'monthly', 'one-off'].includes(mealPlan.billingCycle))
-          ? (mealPlan.billingCycle as 'daily' | 'weekly' | 'monthly' | 'one-off')
-          : 'one-off';
+        billingCycle = (mealPlan.billingCycle && ['daily', 'weekly', 'biweekly', 'monthly'].includes(mealPlan.billingCycle))
+          ? (mealPlan.billingCycle as 'daily' | 'weekly' | 'biweekly' | 'monthly')
+          : 'monthly';
       }
 
       // Initialize meal types and days from existing schedules
@@ -347,8 +347,8 @@
       planName = String(mealPlan.name || '');
       description = String(mealPlan.description || '');
       price = mealPlan.price != null && !isNaN(mealPlan.price) ? String(mealPlan.price) : '0';
-      if (mealPlan.billingCycle && ['daily', 'weekly', 'monthly', 'one-off'].includes(mealPlan.billingCycle)) {
-        billingCycle = mealPlan.billingCycle as 'daily' | 'weekly' | 'monthly' | 'one-off';
+      if (mealPlan.billingCycle && ['daily', 'weekly', 'biweekly', 'monthly'].includes(mealPlan.billingCycle)) {
+        billingCycle = mealPlan.billingCycle as 'daily' | 'weekly' | 'biweekly' | 'monthly';
       }
     }
   });
@@ -406,7 +406,7 @@
                 {#each billingCycleOptions as option}
                   <DropdownMenu.DropdownMenuItem
                     onclick={() => {
-                      billingCycle = option.value as 'daily' | 'weekly' | 'monthly' | 'one-off';
+                      billingCycle = option.value as 'daily' | 'weekly' | 'biweekly' | 'monthly';
                       billingCycleOpen = false;
                     }}
                     class={cn(

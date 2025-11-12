@@ -2,7 +2,7 @@ export default async function (server, opts) {
   server.post('/', {
     schema: {
       tags: ['subscriptions'],
-      description: 'Subscribe to a meal plan',
+      description: 'Subscribe to a meal plan. Note: Users subscribe to meal plans (not kitchens). Each meal plan belongs to a kitchen.',
       security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
@@ -141,7 +141,7 @@ export default async function (server, opts) {
   server.get('/my', {
     schema: {
       tags: ['subscriptions'],
-      description: 'Get user subscriptions',
+      description: 'Get user subscriptions. Note: Subscriptions are tied to meal plans, not kitchens. Each meal plan belongs to a kitchen. Relationship: Subscription → MealPlan → Kitchen',
       security: [{ bearerAuth: [] }],
       response: {
         200: {
@@ -171,6 +171,8 @@ export default async function (server, opts) {
   }, async (request, reply) => {
     try {
       const userId = request.user.id;
+      // Get user's subscriptions (tied to meal plans, not kitchens)
+      // Relationship: Subscription → MealPlan → Kitchen
       const subscriptions = await server.prisma.subscription.findMany({
         where: {
           userId,
@@ -190,6 +192,110 @@ export default async function (server, opts) {
       return subscriptions;
     } catch (err) {
       server.log.error('Error fetching subscriptions:', err);
+      return reply.code(400).send({ error: err.message || 'Failed to fetch subscriptions' });
+    }
+  });
+
+  server.get('/kitchen/:kitchenId', {
+    schema: {
+      tags: ['subscriptions'],
+      description: 'Get subscriptions for meal plans belonging to a kitchen (owner only). Note: Subscriptions are tied to meal plans, not kitchens directly. This endpoint returns all subscriptions for meal plans that belong to the specified kitchen.',
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        required: ['kitchenId'],
+        properties: {
+          kitchenId: { type: 'string' }
+        }
+      },
+      response: {
+        200: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              userId: { type: 'string' },
+              mealPlanId: { type: 'string' },
+              mealType: { type: 'string' },
+              dayOfWeek: { type: 'number' },
+              isActive: { type: 'boolean' },
+              createdAt: { type: 'string', format: 'date-time' },
+              updatedAt: { type: 'string', format: 'date-time' },
+              user: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  email: { type: 'string' }
+                }
+              },
+              mealPlan: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  kitchenId: { type: 'string' }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    preHandler: [server.authenticate, server.requireRole(['owner', 'admin'])]
+  }, async (request, reply) => {
+    try {
+      const { kitchenId } = request.params;
+      const userId = request.user.id;
+
+      // Verify the kitchen belongs to the owner
+      const kitchen = await server.prisma.kitchen.findUnique({
+        where: { id: kitchenId }
+      });
+
+      if (!kitchen) {
+        return reply.code(404).send({ error: 'Kitchen not found' });
+      }
+
+      if (kitchen.ownerId !== userId && request.user.role !== 'admin') {
+        return reply.code(403).send({ error: 'Forbidden' });
+      }
+
+      // Get all subscriptions for meal plans that belong to this kitchen
+      // Relationship: Subscription → MealPlan → Kitchen
+      // Users subscribe to meal plans, not kitchens directly
+      const subscriptions = await server.prisma.subscription.findMany({
+        where: {
+          mealPlan: {
+            kitchenId
+          }
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          mealPlan: {
+            select: {
+              id: true,
+              name: true,
+              kitchenId: true
+            }
+          }
+        },
+        orderBy: [
+          { isActive: 'desc' },
+          { createdAt: 'desc' }
+        ]
+      });
+
+      return subscriptions;
+    } catch (err) {
+      server.log.error('Error fetching kitchen subscriptions:', err);
       return reply.code(400).send({ error: err.message || 'Failed to fetch subscriptions' });
     }
   });

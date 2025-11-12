@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { getKitchen, createMealPlan, deleteMealPlan, getKitchenOrders, updateOrderStatus, updateKitchen, type Kitchen, type MealPlan, type Order } from '$lib/api';
+  import { getKitchen, createMealPlan, deleteMealPlan, getKitchenOrders, updateOrderStatus, updateKitchen, getKitchenSubscriptions, type Kitchen, type MealPlan, type Order, type Subscription } from '$lib/api';
   import { authStore } from '$lib/stores/auth';
   import { initSocket, socketStore } from '$lib/stores/socket';
   import Button from '$lib/ui/Button.svelte';
@@ -20,12 +20,13 @@
   let kitchen = $state<Kitchen | null>(null);
   let mealPlans = $state<MealPlan[]>([]);
   let orders = $state<Order[]>([]);
+  let subscriptions = $state<Subscription[]>([]);
   let loading = $state(true);
   let error = $state('');
   let showPlanForm = $state(false);
   let planName = $state('');
   let price = $state('');
-  let billingCycle = $state<'daily' | 'weekly' | 'monthly' | 'one-off'>('one-off');
+  let billingCycle = $state<'daily' | 'weekly' | 'biweekly' | 'monthly'>('monthly');
   
   // Currency selection
   const commonCurrencies = [
@@ -79,9 +80,9 @@
   let deleteDialogOpen = $state(false);
   
   const billingCycleOptions = [
-    { value: 'one-off', label: 'One-off' },
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
+    { value: 'biweekly', label: 'Bi-weekly' },
     { value: 'monthly', label: 'Monthly' }
   ];
   
@@ -162,7 +163,7 @@
       showPlanForm = false;
       planName = '';
       price = '';
-      billingCycle = 'one-off';
+      billingCycle = 'monthly';
       selectedMealTypes = new Set(['lunch', 'dinner']);
       selectedDays = new Set([1, 2, 3, 4, 5]);
       
@@ -190,7 +191,10 @@
       if (kitchen) {
         // Use mealPlans from kitchen object (already included in API response)
         mealPlans = kitchen.mealPlans || [];
-        await loadOrders();
+        await Promise.all([
+          loadOrders(),
+          loadSubscriptions()
+        ]);
         if (kitchen.location) {
           locationLat = kitchen.location.lat;
           locationLng = kitchen.location.lng;
@@ -221,6 +225,86 @@
     } catch (err) {
       console.error(err);
     }
+  }
+
+  // Load subscriptions for meal plans belonging to this kitchen
+  // Relationship: Subscription → MealPlan → Kitchen
+  // Users subscribe to meal plans, not kitchens directly
+  async function loadSubscriptions(): Promise<void> {
+    try {
+      if (!kitchen) return;
+      // This API endpoint returns all subscriptions for meal plans that belong to this kitchen
+      const data = await getKitchenSubscriptions(kitchen.id);
+      subscriptions = data;
+      console.log('Loaded subscriptions:', subscriptions);
+      console.log('Active subscriptions:', activeSubscriptions);
+      console.log('Inactive subscriptions:', inactiveSubscriptions);
+    } catch (err) {
+      console.error('Error loading subscriptions:', err);
+    }
+  }
+
+  const activeSubscriptions = $derived.by(() => {
+    return subscriptions.filter(sub => sub.isActive);
+  });
+
+  const inactiveSubscriptions = $derived.by(() => {
+    return subscriptions.filter(sub => !sub.isActive);
+  });
+
+  const daysOfWeekNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  const upcomingMeals = $derived.by(() => {
+    const upcoming: Record<string, {
+      date: string;
+      dayOfWeek: number;
+      mealType: 'breakfast' | 'lunch' | 'dinner';
+      planName: string;
+      subscribers: Array<{ name: string; email: string }>;
+    }> = {};
+
+    const today = new Date();
+    for (let i = 0; i < 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      const dayOfWeek = date.getDay();
+
+      for (const sub of activeSubscriptions) {
+        if (sub.dayOfWeek === null || sub.dayOfWeek === dayOfWeek) {
+          const dateStr = date.toISOString().split('T')[0];
+          const key = `${dateStr}-${sub.mealType}`;
+          
+          if (!upcoming[key]) {
+            upcoming[key] = {
+              date: dateStr,
+              dayOfWeek,
+              mealType: sub.mealType,
+              planName: sub.mealPlan?.name || 'Unknown Plan',
+              subscribers: []
+            };
+          }
+          
+          if (sub.user) {
+            upcoming[key].subscribers.push({
+              name: sub.user.name || 'Unknown',
+              email: sub.user.email || ''
+            });
+          }
+        }
+      }
+    }
+
+    return Object.values(upcoming).map(meal => ({
+      ...meal,
+      subscriberName: meal.subscribers.map(s => s.name).join(', '),
+      subscriberEmail: meal.subscribers[0]?.email || '',
+      count: meal.subscribers.length
+    })).sort((a, b) => a.date.localeCompare(b.date));
+  });
+
+  async function handleNotifyInactive(subscription: Subscription): Promise<void> {
+    // TODO: Implement notification API call
+    alert(`Notification will be sent to ${subscription.user?.name || 'user'} (${subscription.user?.email || 'N/A'})`);
   }
 
   function getOrdersForPlan(planId: string): Order[] {
@@ -416,6 +500,123 @@
         </p>
       {/if}
     </Card>
+
+    <!-- Upcoming Meals to Prepare -->
+    <Card class={cn('p-6 mb-6')}>
+      <h2 class={cn('text-2xl font-semibold mb-4')}>Upcoming Meals to Prepare</h2>
+      {#if upcomingMeals.length === 0}
+        <p class={cn('text-muted-foreground text-center py-4')}>No upcoming meals scheduled</p>
+      {:else}
+        <div class={cn('space-y-4')}>
+          {#each upcomingMeals as meal}
+            <div class={cn('p-4 border rounded-lg')}>
+              <div class={cn('flex justify-between items-start mb-2')}>
+                <div>
+                  <div class={cn('flex items-center gap-2 mb-1')}>
+                    <Badge variant={meal.mealType === 'breakfast' ? 'default' : meal.mealType === 'lunch' ? 'secondary' : 'outline'}>
+                      {mealTypeLabels[meal.mealType]}
+                    </Badge>
+                    <span class={cn('font-semibold')}>{meal.planName}</span>
+                  </div>
+                  <p class={cn('text-sm text-muted-foreground')}>
+                    {new Date(meal.date).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+                  </p>
+                </div>
+                <div class={cn('text-right')}>
+                  <p class={cn('text-lg font-bold')}>{meal.count}</p>
+                  <p class={cn('text-xs text-muted-foreground')}>subscriber{meal.count !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+              <div class={cn('mt-2 pt-2 border-t border-border')}>
+                <p class={cn('text-sm text-muted-foreground')}>
+                  <span class={cn('font-medium')}>Subscribers:</span> {meal.subscriberName}
+                </p>
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </Card>
+
+    <!-- Subscriptions Section -->
+    <div class={cn('grid gap-6 mb-6 md:grid-cols-2')}>
+      <!-- Active Subscriptions -->
+      <Card class={cn('p-6')}>
+        <h2 class={cn('text-2xl font-semibold mb-4')}>Active Subscriptions</h2>
+        {#if activeSubscriptions.length === 0}
+          <p class={cn('text-muted-foreground text-center py-4')}>No active subscriptions</p>
+        {:else}
+          <div class={cn('space-y-3 max-h-96 overflow-y-auto')}>
+            {#each activeSubscriptions as sub}
+              <div class={cn('p-3 border rounded-lg')}>
+                <div class={cn('flex justify-between items-start mb-2')}>
+                  <div class={cn('flex-1')}>
+                    <div class={cn('flex items-center gap-2 mb-1')}>
+                      <Badge variant={sub.mealType === 'breakfast' ? 'default' : sub.mealType === 'lunch' ? 'secondary' : 'outline'}>
+                        {mealTypeLabels[sub.mealType]}
+                      </Badge>
+                      <span class={cn('font-semibold text-sm')}>{sub.mealPlan?.name || 'Unknown Plan'}</span>
+                    </div>
+                    <p class={cn('text-sm text-muted-foreground')}>
+                      {sub.user?.name || 'Unknown User'} ({sub.user?.email || 'N/A'})
+                    </p>
+                    {#if sub.dayOfWeek !== null && sub.dayOfWeek !== undefined}
+                      <p class={cn('text-xs text-muted-foreground mt-1')}>
+                        Day: {daysOfWeekNames[sub.dayOfWeek]}
+                      </p>
+                    {:else}
+                      <p class={cn('text-xs text-muted-foreground mt-1')}>All days</p>
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </Card>
+
+      <!-- Inactive Subscriptions -->
+      <Card class={cn('p-6')}>
+        <h2 class={cn('text-2xl font-semibold mb-4')}>Inactive Subscriptions</h2>
+        {#if inactiveSubscriptions.length === 0}
+          <p class={cn('text-muted-foreground text-center py-4')}>No inactive subscriptions</p>
+        {:else}
+          <div class={cn('space-y-3 max-h-96 overflow-y-auto')}>
+            {#each inactiveSubscriptions as sub}
+              <div class={cn('p-3 border rounded-lg opacity-75')}>
+                <div class={cn('flex justify-between items-start mb-2')}>
+                  <div class={cn('flex-1')}>
+                    <div class={cn('flex items-center gap-2 mb-1')}>
+                      <Badge variant="outline">
+                        {mealTypeLabels[sub.mealType]}
+                      </Badge>
+                      <span class={cn('font-semibold text-sm')}>{sub.mealPlan?.name || 'Unknown Plan'}</span>
+                    </div>
+                    <p class={cn('text-sm text-muted-foreground')}>
+                      {sub.user?.name || 'Unknown User'} ({sub.user?.email || 'N/A'})
+                    </p>
+                    {#if sub.dayOfWeek !== null && sub.dayOfWeek !== undefined}
+                      <p class={cn('text-xs text-muted-foreground mt-1')}>
+                        Day: {daysOfWeekNames[sub.dayOfWeek]}
+                      </p>
+                    {:else}
+                      <p class={cn('text-xs text-muted-foreground mt-1')}>All days</p>
+                    {/if}
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onclick={() => handleNotifyInactive(sub)}
+                  class={cn('w-full mt-2 text-sm')}
+                >
+                  Send Reminder
+                </Button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </Card>
+    </div>
     
     <div class={cn('grid gap-6 md:grid-cols-2')}>
       <div>
@@ -505,7 +706,7 @@
                         {#each billingCycleOptions as option}
                           <DropdownMenu.DropdownMenuItem
                             onclick={() => {
-                              billingCycle = option.value as 'daily' | 'weekly' | 'monthly' | 'one-off';
+                              billingCycle = option.value as 'daily' | 'weekly' | 'biweekly' | 'monthly';
                               billingCycleOpen = false;
                             }}
                             class={cn(
@@ -580,7 +781,7 @@
                   showPlanForm = false;
                   planName = '';
                   price = '';
-                  billingCycle = 'one-off';
+                  billingCycle = 'monthly';
                   selectedMealTypes = new Set(['lunch', 'dinner']);
                   selectedDays = new Set([1, 2, 3, 4, 5]);
                   selectedCurrency = commonCurrencies.find(c => c.code === detectBrowserCurrency()) || commonCurrencies[0];
